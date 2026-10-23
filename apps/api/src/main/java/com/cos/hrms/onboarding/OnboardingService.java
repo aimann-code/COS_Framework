@@ -24,6 +24,7 @@ public class OnboardingService {
   private final COSAuditService audit;
   private final COSProperties properties;
   private final Environment environment;
+  private final EmpUniqueKeyService uniqueKeys;
 
   public OnboardingService(
       OnboardingRepository repository,
@@ -34,7 +35,8 @@ public class OnboardingService {
       COSJson json,
       COSAuditService audit,
       COSProperties properties,
-      Environment environment) {
+      Environment environment,
+      EmpUniqueKeyService uniqueKeys) {
     this.repository = repository;
     this.configs = configs;
     this.metadata = metadata;
@@ -44,6 +46,7 @@ public class OnboardingService {
     this.audit = audit;
     this.properties = properties;
     this.environment = environment;
+    this.uniqueKeys = uniqueKeys;
   }
 
   public boolean hr(COSActor actor) {
@@ -276,6 +279,8 @@ public class OnboardingService {
           merged.put(key, previous.values().get(key));
       data = new Profile(Map.copyOf(merged), data.groups(), data.same_address());
     }
+    if (old == null) uniqueKeys.checkCreate(actor.scope(), data.values(), "draft/" + id);
+    else uniqueKeys.checkUpdate(actor.scope(), data.values(), old.id(), "draft/" + id);
     requireDocuments(actor.scope(), d, data, old == null ? null : profile(old));
     String body = crypto.encrypt(json.write(data), profileContext(actor.scope(), employee));
     String aadhaar = identifierHash(actor.scope(), "aadhaar", data),
@@ -287,6 +292,7 @@ public class OnboardingService {
       repository.insertEmployee(
           employee, actor.scope(), code, data.values().get("name"), body, aadhaar, pan);
     } else repository.updateEmployee(old, data.values().get("name"), body, aadhaar, pan);
+    if (old == null) uniqueKeys.claimCreated(actor.scope(), data.values(), employee, "draft/" + id);
     var saved = repository.employee(actor.scope(), employee);
     repository.join(saved, LocalDate.parse(data.values().get("joining")), rejoin);
     repository.history(saved, actor.id(), rejoin ? "HR_REJOIN" : "HR_REGISTER");
@@ -354,6 +360,7 @@ public class OnboardingService {
             "EMPLOYMENT_PERIOD_READ_ONLY",
             "Joining history is read-only here. Use rejoin registration for a new employment"
                 + " period.");
+    uniqueKeys.checkUpdate(actor.scope(), data.values(), old.id(), "draft/" + id);
     requireDocuments(actor.scope(), d, data, prior);
     repository.updateEmployee(
         old,
@@ -386,6 +393,7 @@ public class OnboardingService {
     if (old.version() != d.expected())
       throw COSError.conflict(
           "PROFILE_VERSION_CONFLICT", "Your profile changed. Start a new update request.");
+    uniqueKeys.checkUpdate(actor.scope(), data.values(), old.id(), "draft/" + id);
     requireDocuments(actor.scope(), d, data, profile(old));
     repository.transition(d, "SUBMITTED", null, null, null);
     audit.record(
@@ -424,6 +432,7 @@ public class OnboardingService {
             "PROFILE_VERSION_CONFLICT",
             "The employee changed. Reject this request and ask for a fresh proposal.");
       var data = validation.clean(draftProfile(d), true, config);
+      uniqueKeys.checkUpdate(actor.scope(), data.values(), old.id(), "draft/" + id);
       requireDocuments(actor.scope(), d, data, profile(old));
       repository.updateEmployee(
           old,

@@ -62,6 +62,7 @@ class OnboardingWorkflowTest {
   }
 
   @Autowired OnboardingService service;
+  @Autowired EmpUniqueKeyService uniqueKeys;
   @Autowired OnboardingDocumentService documents;
   @Autowired OnboardingImagePolicy images;
   @Autowired OnboardingAccountService access;
@@ -80,6 +81,16 @@ class OnboardingWorkflowTest {
   void seed() {
     metadata.seedLocal("TEST");
     metadata.seedLocal("TENANT_B");
+    var group=UUID.randomUUID();
+    jdbc.sql("INSERT INTO meta.key_admin_group(scope_id,group_id,name,can_read,can_write) VALUES('TEST',:id,'Synthetic key admins',true,true)")
+        .param("id",group).update();
+    jdbc.sql("INSERT INTO meta.key_admin_member(scope_id,group_id,actor_id) VALUES('TEST',:id,'admin')")
+        .param("id",group).update();
+    // Explicit test-fixture choice. There is no migration/production default.
+    uniqueKeys.activate(admin,new EmpUniqueKeyContracts.ActivateReqDTO(0,List.of(
+        new com.cos.shared.reg.UniqueKeyRule.Field("phone",com.cos.shared.reg.UniqueKeyRule.Normalization.TRIM),
+        new com.cos.shared.reg.UniqueKeyRule.Field("account_number",com.cos.shared.reg.UniqueKeyRule.Normalization.TRIM)),
+        Map.of(),true));
   }
 
   Profile sample() {
@@ -92,7 +103,7 @@ class OnboardingWorkflowTest {
             "joining",
             "2026-01-10",
             "phone",
-            "+91 00000 00000",
+            "+91 " + String.format(java.util.Locale.ROOT,"%010d", Math.floorMod(UUID.randomUUID().getMostSignificantBits(), 10000000000L)),
             "basic_salary",
             "20000",
             "pay_currency",
@@ -439,26 +450,52 @@ class OnboardingWorkflowTest {
   }
 
   @Test
-  void duplicateIdentifiersRollBackRegistrationAndKeepDraftUsable() throws Exception {
-    String pan = "ABCDE1234F";
-    var d = save(hr, with(sample(), "pan", pan));
-    documents.upload(hr, UUID.fromString(d.draft_id()), d.version(), "PAN", photo());
-    service.register(
-        hr,
-        UUID.fromString(d.draft_id()),
-        service.getDraft(hr, UUID.fromString(d.draft_id())).version());
-    var duplicate = save(hr, with(sample(), "pan", pan));
-    documents.upload(
-        hr, UUID.fromString(duplicate.draft_id()), duplicate.version(), "PAN", photo());
-    assertThatThrownBy(
-            () ->
-                service.register(
-                    hr,
-                    UUID.fromString(duplicate.draft_id()),
-                    service.getDraft(hr, UUID.fromString(duplicate.draft_id())).version()))
-        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-    assertThat(service.getDraft(hr, UUID.fromString(duplicate.draft_id())).status())
-        .isEqualTo("DRAFT");
+  void duplicateCompositeKeyRollsBackAndKeepsDraftUsable() {
+    var profile=sample();
+    register(profile);
+    var duplicate=save(hr,profile);
+    assertThatThrownBy(()->service.register(hr,UUID.fromString(duplicate.draft_id()),duplicate.version()))
+        .isInstanceOfSatisfying(COSError.class,e->assertThat(e.code).isEqualTo("UNIQUE_KEY_DUPLICATE"));
+    assertThat(service.getDraft(hr,UUID.fromString(duplicate.draft_id())).status()).isEqualTo("DRAFT");
+  }
+
+  @Test
+  void singleIdentifierIsNotAnUnconfiguredUniquenessRule() throws Exception {
+    String pan="ABCDE1234F";
+    for(int i=0;i<2;i++) {
+      var draft=save(hr,with(sample(),"pan",pan));
+      documents.upload(hr,UUID.fromString(draft.draft_id()),draft.version(),"PAN",photo());
+      service.register(hr,UUID.fromString(draft.draft_id()),
+          service.getDraft(hr,UUID.fromString(draft.draft_id())).version());
+    }
+  }
+
+  @Test
+  void globalAdminRoleDoesNotGrantEntityKeyConfigurationAccess() {
+    assertThatThrownBy(()->uniqueKeys.read(new COSActor("unassigned-admin","TEST",Set.of("ADMIN"))))
+        .isInstanceOfSatisfying(COSError.class,e->assertThat(e.status).isEqualTo(403));
+    assertThatThrownBy(()->uniqueKeys.read(new COSActor("admin","TENANT_B",Set.of("ADMIN"))))
+        .isInstanceOfSatisfying(COSError.class,e->assertThat(e.status).isEqualTo(403));
+  }
+
+  @Test
+  void unconfiguredEntityCannotRegisterAndRetainsItsDraft() {
+    var actor=new COSActor("registrar","TENANT_B",Set.of("REGISTRAR"));
+    var draft=save(actor,sample());
+    assertThatThrownBy(()->service.register(actor,UUID.fromString(draft.draft_id()),draft.version()))
+        .isInstanceOfSatisfying(COSError.class,e->assertThat(e.code).isEqualTo("UNIQUE_RULE_REQUIRED"));
+    assertThat(service.getDraft(actor,UUID.fromString(draft.draft_id())).status()).isEqualTo("DRAFT");
+  }
+
+  @Test
+  void missingConfiguredFieldReportsFieldAndDraftSource() {
+    var draft=save(hr,with(sample(),"account_number",""));
+    assertThatThrownBy(()->service.register(hr,UUID.fromString(draft.draft_id()),draft.version()))
+        .isInstanceOfSatisfying(COSError.class,e-> {
+          assertThat(e.code).isEqualTo("UNIQUE_KEY_MISSING");
+          assertThat(e.fields).containsKey("account_number")
+              .containsEntry("source_ref","draft/"+draft.draft_id());
+        });
   }
 
   @Test
@@ -469,6 +506,7 @@ class OnboardingWorkflowTest {
             with(with(sample(), "joiner", "Rejoiner"), "joining", "2026-05-01"),
             "previous_id",
             e.employee_code());
+    p = with(p, "phone", e.profile().values().get("phone"));
     var rejoined = register(p);
     assertThat(rejoined.employee_id()).isEqualTo(e.employee_id());
     assertThat(rejoined.employee_code()).isEqualTo(e.employee_code());

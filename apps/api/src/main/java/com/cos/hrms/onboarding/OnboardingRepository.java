@@ -196,6 +196,11 @@ public class OnboardingRepository {
         .orElseThrow(COSError::missing);
   }
 
+  public List<Employee> allEmployees(String scope) {
+    return jdbc.sql("SELECT * FROM people.employee WHERE scope_id=:scope ORDER BY employee_id")
+        .param("scope",scope).query(employeeMapper).list();
+  }
+
   public Optional<Employee> byCode(String scope, String code) {
     return jdbc.sql("SELECT * FROM people.employee WHERE scope_id=:scope AND employee_code=:code")
         .param("scope", scope)
