@@ -2,7 +2,7 @@
 
 Source baseline: aimann-code/EMPRegister, DevelopEMP, b2b156c44ba7744bf6cb81c19eb3a05d8633fdba.
 Governance reference: COS_Governance draft 0.3.4 / Naming 0.2.2.
-Implementation status: generated local review patch; not pushed or deployed.
+Implementation status: source published in draft PR https://github.com/aimann-code/EMPRegister/pull/1; not merged, migrated or deployed.
 
 ## Delivered increment
 
@@ -73,4 +73,4 @@ Do not deploy until the full suite passes and remaining production policies are 
 
 ## GitHub delivery
 
-Review this patch before pushing. No GitHub branch/PR or Drive record has been modified by this code generation. The platform-project standard update remains uncommitted following the earlier rejected write.
+The user authorized publishing this source as draft PR https://github.com/aimann-code/EMPRegister/pull/1 against DevelopEMP. Review before merge; no migration/deployment or Drive record changes were performed. The platform-project standard update remains uncommitted following the earlier rejected write. The GitHub/skills maintained-source policy is separately recorded in COS_Governance draft 0.3.5.
