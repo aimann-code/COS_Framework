@@ -14,6 +14,8 @@
     "typecheck": "npm run typecheck --workspace apps/web",
     "lint": "npm run lint --workspace apps/web",
     "test:e2e": "playwright test",
+    "test:home": "playwright test --config playwright.home.config.ts",
+    "test:commerce": "playwright test --config playwright.commerce.config.ts",
     "api:dev": "pwsh -NoProfile -File scripts/backend.ps1",
     "api:test": "pwsh -NoProfile -File scripts/backend.ps1 test",
     "api:build": "pwsh -NoProfile -File scripts/backend.ps1 package",

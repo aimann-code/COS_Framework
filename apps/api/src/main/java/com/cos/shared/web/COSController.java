@@ -26,6 +26,7 @@ public class COSController {
   private final com.cos.hrms.emp.ConfigurationWorkflowService requests;
   private final COSImportService imports;
   private final COSFavoriteService favorites;
+  private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
   public COSController(
       COSProperties properties,
@@ -33,13 +34,15 @@ public class COSController {
       COSEmployeeService employees,
       com.cos.hrms.emp.ConfigurationWorkflowService requests,
       COSImportService imports,
-      COSFavoriteService favorites) {
+      COSFavoriteService favorites,
+      org.springframework.jdbc.core.simple.JdbcClient jdbc) {
     this.properties = properties;
     this.metadata = metadata;
     this.employees = employees;
     this.requests = requests;
     this.imports = imports;
     this.favorites = favorites;
+    this.jdbc = jdbc;
   }
 
   private COSActor actor(Authentication auth) {
@@ -72,6 +75,23 @@ public class COSController {
         a.roles(),
         "scope_id",
         a.scope(),
+        "platform_admin",
+        a.admin() && a.scope().equals(properties.getScopeId()),
+        "company_portal",
+        (a.admin() || a.roles().contains("REGISTRAR"))
+            && jdbc.sql(
+                        "SELECT count(*) FROM commerce.company WHERE scope_id=:scope AND"
+                            + " status='ACTIVE'")
+                    .param("scope", a.scope())
+                    .query(Long.class)
+                    .single()
+                > 0,
+        "scope_name",
+        jdbc.sql("SELECT label FROM meta.scope WHERE scope_id=:scope")
+            .param("scope", a.scope())
+            .query(String.class)
+            .optional()
+            .orElse(a.scope()),
         "can_print",
         a.admin() || a.roles().contains("REGISTRAR"));
   }

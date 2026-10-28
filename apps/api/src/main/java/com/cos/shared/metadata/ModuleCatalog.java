@@ -31,8 +31,13 @@ public final class ModuleCatalog {
       if (!scopeExists(scope)) return;
       jdbc.sql(
               "INSERT INTO meta.module(scope_id,module_code,name,route,audience,enabled,metadata)"
-                  + " SELECT :scope,:code,:name,:route,:audience,true,'{}'::jsonb"
-                  + " WHERE NOT EXISTS (SELECT 1 FROM meta.module WHERE scope_id=:scope AND module_code=:code)")
+                  + " SELECT :scope,:code,:name,:route,:audience, (NOT EXISTS (SELECT 1 FROM"
+                  + " commerce.company WHERE scope_id=:scope) OR EXISTS (SELECT 1 FROM"
+                  + " commerce.entitlement e JOIN commerce.service_descriptor s ON"
+                  + " s.service_code=e.service_code WHERE e.scope_id=:scope AND e.state='ACTIVE'"
+                  + " AND s.module_codes @> jsonb_build_array(CAST(:code AS text)))),'{}'::jsonb"
+                  + " WHERE NOT EXISTS (SELECT 1 FROM meta.module WHERE scope_id=:scope AND"
+                  + " module_code=:code)")
           .param("scope", scope)
           .param("code", code)
           .param("name", name)
@@ -51,7 +56,13 @@ public final class ModuleCatalog {
     }
 
     public List<ModuleView> list(String scope) {
-      return jdbc.sql("SELECT * FROM meta.module WHERE scope_id=:scope AND enabled=true ORDER BY module_code")
+      return jdbc.sql(
+              "SELECT m.* FROM meta.module m WHERE m.scope_id=:scope AND m.enabled=true AND (NOT"
+                  + " EXISTS (SELECT 1 FROM commerce.company WHERE scope_id=:scope) OR EXISTS"
+                  + " (SELECT 1 FROM commerce.entitlement e JOIN commerce.service_descriptor s ON"
+                  + " s.service_code=e.service_code WHERE e.scope_id=:scope AND e.state='ACTIVE'"
+                  + " AND s.module_codes @> jsonb_build_array(m.module_code))) ORDER BY"
+                  + " module_code")
           .param("scope", scope)
           .query(
               (r, n) ->
@@ -97,7 +108,13 @@ public final class ModuleCatalog {
     public List<ModuleView> list(COSActor actor) {
       if (!actor.admin() && !actor.roles().contains("REGISTRAR")) actor.require("EMPLOYEE");
       ensure(actor.scope());
+      var installed =
+          components.stream()
+              .flatMap(c -> c.modules().stream())
+              .map(COSComponent.Module::code)
+              .collect(java.util.stream.Collectors.toSet());
       return repository.list(actor.scope()).stream()
+          .filter(module -> installed.contains(module.module_code()))
           .filter(module -> actor.admin() || actor.permitted(module.audience()))
           .toList();
     }

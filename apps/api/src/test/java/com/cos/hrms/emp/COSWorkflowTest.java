@@ -5,7 +5,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import com.cos.hrms.emp.COSEmployeeService;
 import com.cos.shared.*;
 import com.cos.shared.metadata.*;
 import com.cos.shared.req.*;
@@ -176,7 +175,8 @@ class COSWorkflowTest {
                 accounts.review(
                     registrar,
                     UUID.fromString(pending.account_id()),
-                    new com.cos.shared.account.COSAccountService.Review("APPROVE", "REGISTRAR", "")))
+                    new com.cos.shared.account.COSAccountService.Review(
+                        "APPROVE", "REGISTRAR", "")))
         .isInstanceOf(COSError.class);
     assertThatThrownBy(
             () ->
@@ -198,9 +198,7 @@ class COSWorkflowTest {
                     .param("password", password))
             .andExpect(status().isNoContent())
             .andReturn();
-    var session =
-        (org.springframework.mock.web.MockHttpSession) signedIn.getRequest().getSession(false);
-    mvc.perform(get("/api/v1/cos/session").session(session))
+    mvc.perform(get("/api/v1/cos/session").cookie(accessCookie(signedIn)))
         .andExpect(jsonPath("$.roles").value(org.hamcrest.Matchers.hasItem("REGISTRAR")));
     assertThat(accounts.pending(admin)).noneMatch(a -> a.email().equals(email));
     assertThatThrownBy(
@@ -287,7 +285,7 @@ class COSWorkflowTest {
   }
 
   @Test
-  void actualPasswordLoginEstablishesSessionAndLogoutClearsIt() throws Exception {
+  void actualPasswordLoginEstablishesAccessCookieAndLogoutRevokesIt() throws Exception {
     var result =
         mvc.perform(
                 post("/api/v1/cos/login")
@@ -296,14 +294,13 @@ class COSWorkflowTest {
                     .param("password", "integration-test-password"))
             .andExpect(status().isNoContent())
             .andReturn();
-    var session =
-        (org.springframework.mock.web.MockHttpSession) result.getRequest().getSession(false);
-    assertThat(session).isNotNull();
-    mvc.perform(get("/api/v1/cos/session").session(session))
+    var access = accessCookie(result);
+    mvc.perform(get("/api/v1/cos/session").cookie(access))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.authenticated").value(true));
-    mvc.perform(post("/api/v1/cos/logout").session(session).with(csrf()))
+    mvc.perform(post("/api/v1/cos/logout").cookie(access).with(csrf()))
         .andExpect(status().isNoContent());
+    mvc.perform(get("/api/v1/cos/session").cookie(access)).andExpect(status().isUnauthorized());
     mvc.perform(
             post("/api/v1/cos/login")
                 .with(csrf())
@@ -753,5 +750,16 @@ class COSWorkflowTest {
                 .content(json.write(dto("REGISTER", row()))))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.error_code").value("FORBIDDEN"));
+  }
+
+  private jakarta.servlet.http.Cookie accessCookie(
+      org.springframework.test.web.servlet.MvcResult result) {
+    String header =
+        result.getResponse().getHeaders("Set-Cookie").stream()
+            .filter(value -> value.startsWith("COS_ACCESS="))
+            .findFirst()
+            .orElseThrow();
+    return new jakarta.servlet.http.Cookie(
+        "COS_ACCESS", header.substring("COS_ACCESS=".length(), header.indexOf(';')));
   }
 }

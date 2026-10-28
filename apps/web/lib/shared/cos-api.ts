@@ -12,7 +12,10 @@ export type Session = {
   username: string;
   roles: string[];
   scope_id: string;
+  scope_name?: string;
   can_print: boolean;
+  platform_admin?: boolean;
+  company_portal?: boolean;
 };
 type Choice = { id: string; code: string; label: string; category: string };
 export type ConfigurationPlacement = {

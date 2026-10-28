@@ -157,6 +157,16 @@ export default function PeopleWorkspace() {
       path={path}
       roles={session?.roles ?? []}
       username={session?.username}
+      companyLabel={
+        session?.scope_name ?? session?.scope_id ?? "Your organization"
+      }
+      workspaceLink={
+        session?.platform_admin
+          ? "/platform"
+          : session?.company_portal
+            ? "/company"
+            : undefined
+      }
       roleLabel={
         hr ? "HR" : admin ? "Company admin" : employee ? "Employee" : ""
       }
@@ -188,7 +198,9 @@ export default function PeopleWorkspace() {
       {form}
       <div className={styles.pageHeading} hidden={!!form}>
         <div>
-          <span className={styles.eyebrow}>MHL / PEOPLE</span>
+          <span className={styles.eyebrow}>
+            {session?.scope_id ?? "YOUR ORGANIZATION"} / PEOPLE
+          </span>
           <h1>{title}</h1>
         </div>
         <button

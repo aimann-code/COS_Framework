@@ -15,6 +15,8 @@ type PeopleShellProps = {
   username?: string;
   roleLabel: string;
   busy: boolean;
+  companyLabel?: string;
+  workspaceLink?: string;
   navContext: PeopleNavContext;
   onSignOut: () => void;
   children: ReactNode;
@@ -26,6 +28,8 @@ export default function PeopleShell({
   username,
   roleLabel,
   busy,
+  companyLabel = "Your organization",
+  workspaceLink,
   navContext,
   onSignOut,
   children,
@@ -53,23 +57,49 @@ export default function PeopleShell({
       <div className={styles.portalLayout}>
         <nav className={styles.portalNav} aria-label="Employee Management">
           <div className={styles.companyBadge}>
-            <span>M</span>
+            <span>{companyLabel.slice(0, 1).toUpperCase()}</span>
             <div>
-              <strong>MHL</strong>
-              <small>Restaurant &amp; cloud kitchen</small>
+              <strong>{companyLabel}</strong>
+              <small>Scoped People workspace</small>
             </div>
           </div>
-          {people_nav(roles).map((item) => (
-            <Link
-              key={item.url}
-              href={item.url}
-              aria-current={
-                people_nav_current(path, item.url, navContext) ? "page" : undefined
-              }
-            >
-              {item.label}
+          {workspaceLink && (
+            <Link href={workspaceLink}>
+              {workspaceLink === "/platform"
+                ? "Platform administration"
+                : "Company workspace"}
             </Link>
-          ))}
+          )}
+          {people_nav(roles)
+            .filter(
+              (item) =>
+                item.url !== "/people/companies" ||
+                workspaceLink === "/platform",
+            )
+            .map((item) => ({
+              ...item,
+              url:
+                item.url === "/people/companies" &&
+                workspaceLink === "/platform"
+                  ? "/platform/companies"
+                  : item.url === "/people/configuration" &&
+                      workspaceLink === "/company"
+                    ? "/company/configuration"
+                    : item.url,
+            }))
+            .map((item) => (
+              <Link
+                key={item.url}
+                href={item.url}
+                aria-current={
+                  people_nav_current(path, item.url, navContext)
+                    ? "page"
+                    : undefined
+                }
+              >
+                {item.label}
+              </Link>
+            ))}
         </nav>
         <main id="people-content" className={styles.portalMain}>
           {children}

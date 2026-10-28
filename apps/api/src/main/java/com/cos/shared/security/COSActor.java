@@ -14,7 +14,9 @@ public record COSActor(String id, String scope, Set<String> roles) {
     String scope =
         auth.getPrincipal() instanceof Jwt jwt
             ? jwt.getClaimAsString("entity_scope")
-            : properties.getScopeId();
+            : auth.getPrincipal() instanceof COSLocalUser user
+                ? user.scope()
+                : properties.getScopeId();
     if (scope == null || scope.isBlank()) throw COSError.forbidden();
     return new COSActor(
         auth.getName(),

@@ -31,9 +31,7 @@ export default function COSConnectedWorkspace({
       })
       .catch((e) => {
         if (!active) return;
-        setError(
-          e instanceof Error ? e.message : "Unable to load session.",
-        );
+        setError(e instanceof Error ? e.message : "Unable to load session.");
         setSession(null);
       });
     return () => {
@@ -44,7 +42,13 @@ export default function COSConnectedWorkspace({
   useEffect(() => {
     if (session === undefined) return;
     if (session?.authenticated) {
-      const target = current_workspace_path(pathname, session.roles);
+      const target = authPath
+        ? signed_in_path(
+            new URLSearchParams(window.location.search).get("next"),
+            session.roles,
+            session,
+          )
+        : current_workspace_path(pathname, session.roles);
       if (target !== pathname) router.replace(target);
       return;
     }
@@ -62,7 +66,8 @@ export default function COSConnectedWorkspace({
   const pendingRedirect =
     session === undefined ||
     (session?.authenticated &&
-      current_workspace_path(pathname, session.roles) !== pathname);
+      (authPath ||
+        current_workspace_path(pathname, session.roles) !== pathname));
 
   if (session === null && authPath) {
     return (
@@ -78,6 +83,7 @@ export default function COSConnectedWorkspace({
             signed_in_path(
               new URLSearchParams(window.location.search).get("next"),
               s.roles,
+              s,
             ),
           );
         }}
@@ -91,7 +97,9 @@ export default function COSConnectedWorkspace({
         <div className="loading-main">
           <div className="workspace-loading-message">
             <span className="auth-eyebrow">YOUR WORKSPACE</span>
-            <h1>{session === undefined ? "Loading your workspace" : "Redirecting"}</h1>
+            <h1>
+              {session === undefined ? "Loading your workspace" : "Redirecting"}
+            </h1>
             <p className="auth-intro" role="status">
               {session === undefined
                 ? "Restoring your secure session."
@@ -109,7 +117,9 @@ export default function COSConnectedWorkspace({
                   void api<Session>("/session")
                     .then((s) => setSession(s.authenticated ? s : null))
                     .catch((e) => {
-                      setError(e instanceof Error ? e.message : "Retry failed.");
+                      setError(
+                        e instanceof Error ? e.message : "Retry failed.",
+                      );
                       setSession(null);
                     });
                 }}

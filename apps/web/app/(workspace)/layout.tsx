@@ -1,5 +1,7 @@
-import LiveWorkspaceGateway from "../../components/shared/live-workspace-gateway";
-
-export default function WorkspaceLayout() {
-  return <LiveWorkspaceGateway />;
+export default function WorkspaceLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return children;
 }

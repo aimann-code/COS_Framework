@@ -2,7 +2,12 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError, type Configuration, type Session } from "../../../lib/shared/cos-api";
+import {
+  api,
+  ApiError,
+  type Configuration,
+  type Session,
+} from "../../../lib/shared/cos-api";
 import { onboarding } from "../../../lib/hrms/employee-management/onboarding-api";
 import {
   people_access_message,
@@ -50,6 +55,20 @@ export function usePeopleScreenData(
           return;
         }
         setSession(s);
+        if (path === "/people/companies") {
+          if (!s.platform_admin)
+            throw new Error(
+              "Only a platform administrator can review companies.",
+            );
+          router.replace("/platform/companies");
+          setLoading(false);
+          return;
+        }
+        if (path === "/people/configuration" && s.company_portal) {
+          router.replace("/company/configuration");
+          setLoading(false);
+          return;
+        }
         if (!people_roles_ok(s.roles))
           throw new Error(
             "This legacy viewer account is not an HR or linked employee account. Ask HR to provision the correct access.",
@@ -124,9 +143,10 @@ export function usePeopleScreenData(
           next.employees = profiles.items;
           next.next = profiles.next_cursor;
           next.reviews = reviews;
-          next.modules = await api<
-            { module_code: string; name: string; route: string }[]
-          >("/modules");
+          next.modules =
+            await api<{ module_code: string; name: string; route: string }[]>(
+              "/modules",
+            );
         } else throw new Error("This employee-management page does not exist.");
         if (active) setData(next);
       } catch (e) {

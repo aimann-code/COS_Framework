@@ -1,6 +1,7 @@
 package com.cos.shared.web;
 
 import com.cos.shared.config.COSProperties;
+import com.cos.shared.security.COSActor;
 import com.cos.shared.security.COSJwtService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,8 +36,10 @@ public class COSTokenController {
       @Valid @RequestBody Login input, HttpServletRequest request, HttpServletResponse response) {
     var auth =
         authentication.authenticate(
-            UsernamePasswordAuthenticationToken.unauthenticated(input.username(), input.password()));
-    String token = jwt.issue(auth, properties.getScopeId());
+            UsernamePasswordAuthenticationToken.unauthenticated(
+                input.username(), input.password()));
+    String scope = COSActor.from(auth, properties).scope();
+    String token = jwt.issue(auth, scope);
     jwt.write(request, response, token);
     return Map.of(
         "token_type",
@@ -46,7 +49,7 @@ public class COSTokenController {
         "expires_in",
         COSJwtService.TTL.toSeconds(),
         "scope_id",
-        properties.getScopeId());
+        scope);
   }
 
   public record Login(@NotBlank String username, @NotBlank String password) {}

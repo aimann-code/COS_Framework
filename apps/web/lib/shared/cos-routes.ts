@@ -42,7 +42,10 @@ export function workspace_route(path: string): WorkspaceRoute {
   return { ...base, valid: false };
 }
 export function safe_return_path(path: string | null) {
-  return path && (workspace_route(path).valid || people_path_valid(path))
+  return path &&
+    (workspace_route(path).valid ||
+      people_path_valid(path) ||
+      commerce_path_valid(path))
     ? path
     : "/";
 }
@@ -56,8 +59,21 @@ export function landing_path(roles: string[]) {
         ? "/people"
         : "/dashboard";
 }
-export function signed_in_path(path: string | null, roles: string[]) {
+export function commerce_path_valid(path: string) {
+  return (
+    /^\/platform(?:\/(?:companies|payments|configuration|services))?$/.test(
+      path,
+    ) || /^\/company(?:\/(?:services|configuration))?$/.test(path)
+  );
+}
+export function signed_in_path(
+  path: string | null,
+  roles: string[],
+  context?: { platform_admin?: boolean; company_portal?: boolean },
+) {
   const safe = safe_return_path(path);
+  if (safe === "/" && context?.platform_admin) return "/platform";
+  if (safe === "/" && context?.company_portal) return "/company";
   return current_workspace_path(safe, roles);
 }
 

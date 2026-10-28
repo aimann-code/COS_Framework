@@ -31,10 +31,14 @@ public class COSAuthThrottle extends OncePerRequestFilter {
       throws ServletException, IOException {
     String path = request.getServletPath();
     boolean login = path.equals("/api/v1/cos/login") || path.equals("/api/v1/cos/auth/token");
-    boolean signup = path.equals("/api/v1/cos/auth/sign-up");
+    boolean signup =
+        path.equals("/api/v1/cos/auth/sign-up") || path.equals("/api/v1/cos/companies/register");
     if (request.getMethod().equals("POST")
         && (login || signup)
-        && !allow(request.getRemoteAddr() + path, login ? 40 : 15, System.currentTimeMillis())) {
+        && !allow(
+            request.getRemoteAddr() + (signup ? ":registration" : path),
+            login ? 40 : 15,
+            System.currentTimeMillis())) {
       response.setStatus(429);
       response.setHeader("Retry-After", "900");
       response.setContentType("application/problem+json");

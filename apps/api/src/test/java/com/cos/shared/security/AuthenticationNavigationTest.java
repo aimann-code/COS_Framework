@@ -8,10 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.cos.shared.COSJson;
+import com.cos.shared.account.COSAccountRepository;
 import com.cos.shared.account.COSAccountService;
 import com.cos.shared.metadata.COSMetadataService;
 import io.zonky.test.db.postgres.embedded.EmbeddedPostgres;
 import jakarta.servlet.http.Cookie;
+import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,9 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -61,6 +66,9 @@ class AuthenticationNavigationTest {
   @Autowired MockMvc mvc;
   @Autowired COSMetadataService metadata;
   @Autowired COSAccountService accounts;
+  @Autowired COSAccountRepository accountRepository;
+  @Autowired PasswordEncoder encoder;
+  @Autowired COSJwtService jwt;
   @Autowired COSJson json;
 
   @BeforeAll
@@ -110,6 +118,34 @@ class AuthenticationNavigationTest {
     mvc.perform(post("/api/v1/cos/logout").cookie(access).with(csrf()))
         .andExpect(status().isNoContent());
     mvc.perform(get("/api/v1/cos/accounts/pending").cookie(access))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void httpSessionCannotReplaceTheAccessToken() throws Exception {
+    MvcResult login =
+        mvc.perform(
+                post("/api/v1/cos/login")
+                    .with(csrf())
+                    .param("username", "registrar")
+                    .param("password", "integration-test-password"))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    var session =
+        (org.springframework.mock.web.MockHttpSession) login.getRequest().getSession(false);
+    if (session == null) session = new org.springframework.mock.web.MockHttpSession();
+    assertThat(session.getAttribute("SPRING_SECURITY_CONTEXT")).isNull();
+    mvc.perform(get("/api/v1/cos/accounts/pending").session(session))
+        .andExpect(status().isUnauthorized());
+    // Even sessions created before this hardening cannot retain authentication.
+    var legacyContext =
+        org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+    var principal = User.withUsername("admin").password("unused").roles("ADMIN").build();
+    legacyContext.setAuthentication(
+        UsernamePasswordAuthenticationToken.authenticated(
+            principal, null, principal.getAuthorities()));
+    session.setAttribute("SPRING_SECURITY_CONTEXT", legacyContext);
+    mvc.perform(get("/api/v1/cos/accounts/pending").session(session))
         .andExpect(status().isUnauthorized());
   }
 
@@ -169,5 +205,115 @@ class AuthenticationNavigationTest {
                 .param("password", "synthetic-test-passphrase"))
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.error_code").value("INVALID_CREDENTIALS"));
+  }
+
+  @Test
+  void companyCookiesAndBearerKeepTheirAuthoritativeScope() throws Exception {
+    String scope = "auth_company_" + UUID.randomUUID().toString().replace("-", "");
+    String email = scope + "@example.test";
+    metadata.seedLocal(scope);
+    accountRepository.createActive(
+        scope,
+        "Synthetic Company",
+        email,
+        encoder.encode("synthetic-company-passphrase"),
+        "REGISTRAR",
+        "admin");
+    accounts.signup(
+        new COSAccountService.Signup(
+            "Synthetic duplicate",
+            email.toUpperCase(java.util.Locale.ROOT),
+            "synthetic-other-passphrase"));
+    assertThat(accountRepository.findByEmail(email)).hasSize(1);
+
+    MvcResult login =
+        mvc.perform(
+                post("/api/v1/cos/login")
+                    .with(csrf())
+                    .param("username", email)
+                    .param("password", "synthetic-company-passphrase"))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    String setCookie =
+        login.getResponse().getHeaders("Set-Cookie").stream()
+            .filter(value -> value.startsWith("COS_ACCESS="))
+            .findFirst()
+            .orElseThrow();
+    Cookie access =
+        new Cookie(
+            "COS_ACCESS", setCookie.substring("COS_ACCESS=".length(), setCookie.indexOf(';')));
+    accounts.signup(
+        new COSAccountService.Signup(
+            "Synthetic duplicate after login", email, "synthetic-other-passphrase"));
+    assertThat(accountRepository.findByEmail(email)).hasSize(1);
+    mvc.perform(get("/api/v1/cos/session").cookie(access))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.scope_id").value(scope))
+        .andExpect(jsonPath("$.platform_admin").value(false))
+        .andExpect(jsonPath("$.company_portal").value(false));
+
+    MvcResult issued =
+        mvc.perform(
+                post("/api/v1/cos/auth/token")
+                    .with(csrf())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        json.write(
+                            java.util.Map.of(
+                                "username", email, "password", "synthetic-company-passphrase"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.scope_id").value(scope))
+            .andReturn();
+    String token =
+        json.read(issued.getResponse().getContentAsString(), tools.jackson.databind.JsonNode.class)
+            .get("access_token")
+            .asString();
+    mvc.perform(get("/api/v1/cos/session").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.scope_id").value(scope));
+
+    // A valid signature is insufficient if the account no longer belongs to that scope.
+    var subject = User.withUsername(email).password("unused").roles("REGISTRAR").build();
+    String wrongScope =
+        jwt.issue(
+            UsernamePasswordAuthenticationToken.authenticated(
+                subject, null, subject.getAuthorities()),
+            "TEST");
+    mvc.perform(get("/api/v1/cos/session").header("Authorization", "Bearer " + wrongScope))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void tenantAdminDoesNotBecomePlatformOperator() throws Exception {
+    String scope = "auth_admin_" + UUID.randomUUID().toString().replace("-", "");
+    String email = scope + "@example.test";
+    metadata.seedLocal(scope);
+    // Provisioning cannot issue ADMIN to a local signup; exercise the authority boundary
+    // with an already-authenticated, authoritatively scoped administrator principal.
+    var principal =
+        new COSLocalUser(scope, User.withUsername(email).password("unused").roles("ADMIN").build());
+    var authentication =
+        UsernamePasswordAuthenticationToken.authenticated(
+            principal, null, principal.getAuthorities());
+    mvc.perform(
+            get("/api/v1/cos/session")
+                .with(
+                    org.springframework.security.test.web.servlet.request
+                        .SecurityMockMvcRequestPostProcessors.authentication(authentication)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.platform_admin").value(false))
+        .andExpect(jsonPath("$.company_portal").value(false));
+    mvc.perform(
+            get("/api/v1/cos/company-requests")
+                .with(
+                    org.springframework.security.test.web.servlet.request
+                        .SecurityMockMvcRequestPostProcessors.authentication(authentication)))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            get("/api/v1/cos/platform/overview")
+                .with(
+                    org.springframework.security.test.web.servlet.request
+                        .SecurityMockMvcRequestPostProcessors.authentication(authentication)))
+        .andExpect(status().isForbidden());
   }
 }

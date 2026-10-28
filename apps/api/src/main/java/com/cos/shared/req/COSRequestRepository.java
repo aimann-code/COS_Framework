@@ -13,6 +13,14 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class COSRequestRepository {
+  public boolean commercialScope(String scope) {
+    return jdbc.sql("SELECT count(*) FROM commerce.company WHERE scope_id=:scope")
+            .param("scope", scope)
+            .query(Long.class)
+            .single()
+        > 0;
+  }
+
   public record Request(
       UUID id,
       String readable,

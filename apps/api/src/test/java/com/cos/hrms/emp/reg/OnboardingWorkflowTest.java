@@ -9,8 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.cos.hrms.emp.ConfigurationWorkflowService;
 import com.cos.hrms.emp.doc.OnboardingDocumentService;
 import com.cos.hrms.emp.doc.OnboardingImagePolicy;
-import com.cos.hrms.emp.reg.OnboardingAccountService;
-import com.cos.hrms.emp.reg.OnboardingService;
 import com.cos.shared.*;
 import com.cos.shared.account.*;
 import com.cos.shared.metadata.*;
@@ -79,6 +77,7 @@ class OnboardingWorkflowTest {
   @Autowired COSJson json;
   @Autowired MockMvc mvc;
   @Autowired CompanyAccess.CompanyAccessService companies;
+  @Autowired com.cos.shared.commerce.CommerceService commerce;
   final COSActor hr = new COSActor("registrar", "TEST", Set.of("REGISTRAR"));
   final COSActor admin = new COSActor("admin", "TEST", Set.of("ADMIN"));
   final COSActor otherHR = new COSActor("other-hr", "TEST", Set.of("REGISTRAR"));
@@ -758,7 +757,8 @@ class OnboardingWorkflowTest {
     String pan = freshPan();
     long before = employeeCount();
     assertThatThrownBy(
-            () -> bulk.register(hr, List.of(with(sample(), "pan", pan), with(sample(), "pan", pan))))
+            () ->
+                bulk.register(hr, List.of(with(sample(), "pan", pan), with(sample(), "pan", pan))))
         .isInstanceOf(COSError.class)
         .satisfies(
             error -> {
@@ -864,19 +864,29 @@ class OnboardingWorkflowTest {
         jdbc.sql("SELECT count(*) FROM people.employee WHERE scope_id='TEST'")
             .query(Long.class)
             .single();
-    var id =
-        companies.submit(
-            new CompanyAccess.Submit(
+    var registration =
+        commerce.register(
+            new com.cos.shared.commerce.CommerceContracts.Register(
                 "North Kitchen",
                 "north.kitchen@example.test",
                 "integration-test-password",
-                List.of("EMPLOYEES", "LEAVE")));
+                List.of("EMPLOYEE_MANAGEMENT")));
+    var id = UUID.fromString(registration.company_id());
     assertThatThrownBy(
             () ->
                 companies.decide(
                     hr, id, new CompanyAccess.Decision("APPROVE", List.of("EMPLOYEES"), "")))
         .isInstanceOf(COSError.class);
-    companies.decide(admin, id, new CompanyAccess.Decision("APPROVE", List.of("EMPLOYEES"), ""));
+    var payment =
+        commerce.declarePayment(
+            id,
+            new com.cos.shared.commerce.CommerceContracts.PaymentDeclaration(
+                registration.registration_token(), "SYNTHETIC-NORTH-KITCHEN"));
+    commerce.reviewPayment(
+        admin,
+        UUID.fromString(payment.payment_id()),
+        new com.cos.shared.commerce.CommerceContracts.Review(
+            "APPROVE", "Verified synthetic test transfer"));
     assertThat(
             jdbc.sql("SELECT count(*) FROM people.employee WHERE scope_id='TEST'")
                 .query(Long.class)
@@ -894,7 +904,8 @@ class OnboardingWorkflowTest {
         .isEqualTo("REGISTRAR");
     assertThat(
             jdbc.sql(
-                    "SELECT enabled FROM meta.module WHERE scope_id=:scope AND module_code='EMPLOYEES'")
+                    "SELECT enabled FROM meta.module WHERE scope_id=:scope AND"
+                        + " module_code='EMPLOYEES'")
                 .param("scope", scope)
                 .query(Boolean.class)
                 .single())

@@ -1,8 +1,41 @@
 # COS · MHL Employee Management
 
-COS is the application framework. MHL, a restaurant and cloud-kitchen business, is the initial company using its Employee Management module. Employee registration and maintenance are the current delivery target; sales, payment channels and broader multi-company administration are future work.
+COS is the application framework. MHL, a restaurant and cloud-kitchen business, is the initial company using its Employee Management module. The local implementation also supports company registration, service subscriptions, manual payment approval and company-specific configuration review. Live payment channels and production subscription operations remain pending.
 
 **Implementation status — 22-Oct-2026:** connected Next.js frontend, Spring Boot API and persistent PostgreSQL storage, verified locally. This repository is not a deployed or approved production release.
+
+**COS homepage — 28-Oct-2026:** `/` is a customer-facing CulinaOS introduction. Company onboarding starts at `/company-register`; employee signup remains `/sign-up`. Public pages contain no GitHub, internal architecture, governance or blueprint links. The live service selection is loaded from the shared service catalogue, not a public architecture inventory. Local development and production preview use port 3000. Run `npm run test:home` for homepage checks. No Drive governance records were updated; reconciliation remains pending. The user separately authorized committing and pushing the implementation after verification.
+
+## Shared company and service workflow — 28-Oct-2026
+
+The user's company/service scenario authorizes this local implementation: register a company, select services, verify payment before activation, then review company-specific configuration requests in a separate developer administration workspace. This replaces the V8 direct company-approval entry point for new registrations. It does not approve commercial prices or a production payment provider. Existing company accounts and historical requests are preserved.
+
+| Route | Purpose |
+| --- | --- |
+| `/company-register` | Company details, database-backed service selection, saved quote, payment-reference submission and token-protected status/recovery |
+| `/platform` | Platform administrator overview and full-register counts |
+| `/platform/companies` | Company directory, requested/active services and pending configuration counts |
+| `/platform/payments` | Review exact company/reference/amount; approval atomically provisions company scope, account and entitlements |
+| `/platform/configuration` | Company/service-scoped field proposals, review notes, approvals and rejections |
+| `/platform/services` | Confirmed description, availability and reference-price edits with catalogue version checks |
+| `/company` | Company overview, subscribed module links and request history |
+| `/company/configuration` | Add a typed field or request a label change to an approved field at a pinned schema version |
+
+Shared controllers/services/repositories live under `com.cos.shared.commerce`. V9 adds service descriptors, immutable order snapshots, payment evidence, entitlements, configuration requests and events; V10 adds versioned per-service schemas and service-level field presentation. Existing migrations were not edited. The shared frontend uses typed contracts in `lib/shared/commerce.ts`, shared workspace/dialog components and one registration wizard; it does not build different company-specific pages.
+
+Service descriptors contain module codes, dependencies, API scope and reference pricing. Availability also requires installed `COSComponent` beans. A company's active entitlements and module audience are checked server-side, including direct API calls. New unpurchased modules default off for commerce tenants. Disabling a service for new sales does not silently delete existing entitlements or quoted orders. Local credentials preserve the account's authoritative company scope in both cookie and bearer authentication; platform operator authority requires ADMIN in the configured platform scope. Company ADMIN and REGISTRAR accounts cannot approve their own payment or bypass platform configuration review. Legacy non-commerce accounts retain their previous landing behavior.
+
+The current reference catalogue offers Employee Management and dependent Leave Management. Prices are development fixtures in INR per month, editable by the platform operator, and **not an approved commercial offer**. The server fixes the order amount and service versions at registration; later price changes do not alter it. This implementation records a payment reference and requires manual administrator verification. It does not collect money, verify a bank transfer automatically, renew a subscription, issue tax invoices or implement refunds. A reference by itself never activates services. Repeated declarations and competing approvals are guarded; rejection permits a corrected reference.
+
+Registration returns a random, private recovery capability once; only its digest is persisted. The browser keeps it in memory, and the user may save the recovery details manually. It expires after seven days. Status/payment actions require that capability and CSRF, rather than accepting a company UUID as authority. No recovery capability or password is included in the administrator company lists.
+
+Cookie/bearer access is revalidated against the account on each request. The HTTP session stores CSRF state, not authentication; a retained `JSESSIONID` cannot replace an expired or revoked access token. Because local sign-in takes an email without a company selector, company registration and public signup share a normalized-email transaction lock. Signup returns the same response when an account or company registration already reserves that login, so it cannot shadow an active company or block a pending activation. Company/account registration also shares the existing remote-address throttle. These are local identity controls, not production identity-provider provisioning.
+
+Configuration is allowlisted data, never executable SQL/Java/network paths. FIELD_ADD supports text/date/number. FIELD_UPDATE changes a service-level label while keeping technical identifier, type and sensitivity stable; sensitivity or type changes require a reviewed data migration. Pending changes do not modify active schemas. Approval checks company entitlement, request state, schema version and, for employee edits, the active form version, then publishes transactionally with audit/events. Service labels can differ while reusing a shared field identity. Employee service approvals feed the existing employee form; another service gets the same schema API, but its domain adapter must explicitly consume that metadata. Arbitrary business algorithms and leave-policy changes are not implemented by this field-request handler; direct paid-company policy writes remain blocked rather than bypass approval.
+
+Reuse the component contract and shared catalogue/schema/approval services for another module. Add the domain handler and an approved descriptor for its installed component; service selection, company scoping, review UI and metadata storage remain shared. This is compiled component discovery, not runtime execution of uploaded plugins. Distributed payment webhooks, refunds, subscription expiry/renewal, catalogue pagination beyond the current 200-row admin window, identity provisioning and operational scale testing remain future integrations. Admin full-register counts are separate from bounded displayed queues/search.
+
+Verification commands: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run test:home`, `npm run test:commerce`, and `pwsh -NoProfile -File scripts/backend.ps1 '-Dtest=CommerceWorkflowTest,AuthenticationNavigationTest,COSAuthThrottleTest,com.cos.hrms.emp.reg.OnboardingWorkflowTest,SharedRegistryTest,LeaveWorkflowTest,COSWorkflowTest' test`. On 28-Oct-2026, 76 backend cases passed across this regression selection and the affected workflow rerun after replacing obsolete session-authentication assertions. The 22 commerce and four homepage browser cases passed across desktop/mobile runs; type checking and the production frontend build also passed. Lint has zero errors and two existing navigation warnings. Commerce browser tests use explicit synthetic API fixtures for UI/error/accessibility contracts; Java tests use temporary PostgreSQL for persistence, authority, dependency, concurrency and configuration behavior. Additional live same-origin flows verified synthetic registration, manual approval, tenant isolation, entitlement denial, approved field publication/label updates, session-only denial and duplicate-signup protection against the running API. Local rendered evidence is in `tmp/commerce-delivery-evidence.json`, with screenshots and live check results in `tmp/`. Preserve `.local` database configuration and encryption keys together; never use real employee or payment data for these checks. Repository publication is a separate, explicitly authorized follow-up; Drive reconciliation, sharing changes and deployment remain outside that authorization.
 
 ## Technology and structure
 
@@ -10,7 +43,7 @@ COS is the application framework. MHL, a restaurant and cloud-kitchen business, 
 | -------------------- | --------------------------------------------------------------------------------- |
 | Frontend             | Next.js 16.4.2 App Router, React 19.3.1, TypeScript, CSS Modules and Lucide icons |
 | Backend              | Spring Boot 4.1.1, Java 21, Spring Security and JDBC repositories                 |
-| Persistence          | PostgreSQL with versioned Flyway migrations V1–V4                                 |
+| Persistence          | PostgreSQL with versioned Flyway migrations V1–V10                                 |
 | Local authentication | Persistent accounts, server sessions, HttpOnly cookies and CSRF protection        |
 | Verification         | PostgreSQL integration tests, Playwright and axe accessibility checks             |
 
@@ -257,7 +290,7 @@ npm run start      # Serve an existing Next.js production build
 
 ## Remaining work and production boundary
 
-The database uses additive Flyway migrations V1–V4. V4 introduces expanded `people` profiles, memberships, drafts, employment periods, protected documents, history and outbox records. Do not edit an applied migration; add a forward migration.
+The database uses additive Flyway migrations V1–V10. V4 introduces expanded `people` profiles, memberships, drafts, employment periods, protected documents, history and outbox records. Do not edit an applied migration; add a forward migration.
 
 Historical employee records and requests remain in the legacy tables. They are not automatically migrated or ownership-linked. Legacy public employee request mutations return `410 LEGACY_WORKFLOW_RETIRED`; configuration requests remain active. The older CSV preview still exists, but expanded-profile bulk registration and legacy-record migration are pending. Live Google Sheets integration/synchronization is not implemented.
 
@@ -273,7 +306,7 @@ Before real employee data or deployment, complete:
 - Managed PostgreSQL, separate migration/runtime privileges, TLS, secret/key management and rotation.
 - Malware-scanner operation, document retention/deletion, encrypted backups and restore verification.
 - Monitoring, operational recovery, capacity testing and external outbox delivery.
-- Company provisioning and policy configuration beyond the local `LOCAL_DEV` fixture; scoped storage alone does not complete a multi-company SaaS control plane.
+- Production identity provisioning, full company lifecycle and policy configuration beyond the local company registration and entitlement workflow; scoped storage alone does not complete a production SaaS control plane.
 
 Database, identity and deployment settings are defined in `apps/api/src/main/resources/application.yaml`. A successful production build is not production readiness or a deployed service.
 

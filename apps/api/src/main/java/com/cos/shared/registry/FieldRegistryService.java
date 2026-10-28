@@ -36,12 +36,17 @@ public class FieldRegistryService {
   private final JdbcClient jdbc;
   private final COSMetadataRepository configs;
   private final COSAuditService audit;
+  private final com.cos.shared.config.COSProperties properties;
 
   public FieldRegistryService(
-      JdbcClient jdbc, COSMetadataRepository configs, COSAuditService audit) {
+      JdbcClient jdbc,
+      COSMetadataRepository configs,
+      COSAuditService audit,
+      com.cos.shared.config.COSProperties properties) {
     this.jdbc = jdbc;
     this.configs = configs;
     this.audit = audit;
+    this.properties = properties;
   }
 
   public record FieldRegistration(
@@ -70,6 +75,18 @@ public class FieldRegistryService {
   @Transactional
   public FieldView registerField(COSActor actor, FieldRegistration input) {
     configure(actor);
+    return registerScopedField(actor, input);
+  }
+
+  /** Only a verified platform operator can apply an approved company's metadata request. */
+  @Transactional
+  public FieldView registerApprovedField(COSActor operator, String scope, FieldRegistration input) {
+    if (!operator.admin() || !operator.scope().equals(properties.getScopeId()))
+      throw COSError.forbidden();
+    return registerScopedField(new COSActor(operator.id(), scope, Set.of("ADMIN")), input);
+  }
+
+  private FieldView registerScopedField(COSActor actor, FieldRegistration input) {
     configs.lock(actor.scope());
     String name = technical(input.technical_name());
     String type = type(input.data_type());
@@ -79,18 +96,20 @@ public class FieldRegistryService {
       if (!existing.data_type().equals(type))
         throw COSError.conflict(
             "FIELD_TYPE_CONFLICT",
-            "This field is already registered with a different type. Reuse it or correct the spelling.");
+            "This field is already registered with a different type. Reuse it or correct the"
+                + " spelling.");
       if (existing.sensitive() != input.sensitive())
         throw COSError.conflict(
             "FIELD_SENSITIVITY_CONFLICT",
-            "This field is already registered with a different sensitivity. Reuse the registered field.");
+            "This field is already registered with a different sensitivity. Reuse the registered"
+                + " field.");
       return existing;
     }
-    UUID id =
-        UUID.nameUUIDFromBytes((actor.scope() + ":" + name).getBytes(StandardCharsets.UTF_8));
+    UUID id = UUID.nameUUIDFromBytes((actor.scope() + ":" + name).getBytes(StandardCharsets.UTF_8));
     jdbc.sql(
-            "INSERT INTO meta.field_definition(field_id,readable_id,scope_id,technical_name,data_type,"
-                + "label,sensitive) VALUES(:id,:readable,:scope,:name,:type,:label,:sensitive)")
+            "INSERT INTO"
+                + " meta.field_definition(field_id,readable_id,scope_id,technical_name,data_type,label,sensitive)"
+                + " VALUES(:id,:readable,:scope,:name,:type,:label,:sensitive)")
         .param("id", id)
         .param("readable", "LOCAL-FLD-" + id)
         .param("scope", actor.scope())
@@ -127,7 +146,8 @@ public class FieldRegistryService {
         throw new COSError(
             422, "TABLE_FIELDS_INVALID", "Each registered field can appear once on a table.");
       var field = find(actor.scope(), technical);
-      if (field == null) missing.put(technical, "Register this field before registering the table.");
+      if (field == null)
+        missing.put(technical, "Register this field before registering the table.");
       else ids.add(UUID.fromString(field.field_id()));
     }
     if (!missing.isEmpty())
@@ -174,10 +194,10 @@ public class FieldRegistryService {
   private List<FieldView> fields(String scope) {
     return jdbc.sql(
             "SELECT f.field_id,f.technical_name,f.label,f.data_type,f.sensitive,"
-                + " COALESCE(array_agg(t.technical_name ORDER BY t.technical_name)"
-                + " FILTER (WHERE t.technical_name IS NOT NULL), '{}') FROM meta.field_definition f"
-                + " LEFT JOIN meta.table_field tf ON tf.field_id=f.field_id LEFT JOIN meta.data_table"
-                + " t ON t.table_id=tf.table_id WHERE f.scope_id=:scope GROUP BY"
+                + " COALESCE(array_agg(t.technical_name ORDER BY t.technical_name) FILTER (WHERE"
+                + " t.technical_name IS NOT NULL), '{}') FROM meta.field_definition f LEFT JOIN"
+                + " meta.table_field tf ON tf.field_id=f.field_id LEFT JOIN meta.data_table t ON"
+                + " t.table_id=tf.table_id WHERE f.scope_id=:scope GROUP BY"
                 + " f.field_id,f.technical_name,f.label,f.data_type,f.sensitive ORDER BY"
                 + " f.technical_name")
         .param("scope", scope)
@@ -188,11 +208,11 @@ public class FieldRegistryService {
   private FieldView find(String scope, String name) {
     return jdbc.sql(
             "SELECT f.field_id,f.technical_name,f.label,f.data_type,f.sensitive,"
-                + " COALESCE(array_agg(t.technical_name ORDER BY t.technical_name)"
-                + " FILTER (WHERE t.technical_name IS NOT NULL), '{}') FROM meta.field_definition f"
-                + " LEFT JOIN meta.table_field tf ON tf.field_id=f.field_id LEFT JOIN meta.data_table"
-                + " t ON t.table_id=tf.table_id WHERE f.scope_id=:scope AND f.technical_name=:name"
-                + " GROUP BY f.field_id,f.technical_name,f.label,f.data_type,f.sensitive")
+                + " COALESCE(array_agg(t.technical_name ORDER BY t.technical_name) FILTER (WHERE"
+                + " t.technical_name IS NOT NULL), '{}') FROM meta.field_definition f LEFT JOIN"
+                + " meta.table_field tf ON tf.field_id=f.field_id LEFT JOIN meta.data_table t ON"
+                + " t.table_id=tf.table_id WHERE f.scope_id=:scope AND f.technical_name=:name GROUP"
+                + " BY f.field_id,f.technical_name,f.label,f.data_type,f.sensitive")
         .param("scope", scope)
         .param("name", name)
         .query((r, n) -> field(r))
@@ -214,7 +234,8 @@ public class FieldRegistryService {
 
   private List<TableView> tables(String scope) {
     return jdbc.sql(
-            "SELECT technical_name FROM meta.data_table WHERE scope_id=:scope ORDER BY technical_name")
+            "SELECT technical_name FROM meta.data_table WHERE scope_id=:scope ORDER BY"
+                + " technical_name")
         .param("scope", scope)
         .query((r, n) -> findTable(scope, r.getString(1)))
         .list();
@@ -233,7 +254,8 @@ public class FieldRegistryService {
         .query(
             (r, n) -> {
               var fields = r.getArray(5);
-              List<String> names = fields == null ? List.of() : List.of((String[]) fields.getArray());
+              List<String> names =
+                  fields == null ? List.of() : List.of((String[]) fields.getArray());
               return new TableView(
                   r.getObject(1, UUID.class).toString(),
                   r.getString(2),
@@ -245,8 +267,18 @@ public class FieldRegistryService {
         .orElse(null);
   }
 
-  private static void configure(COSActor actor) {
+  private void configure(COSActor actor) {
     if (!actor.admin()) throw COSError.forbidden();
+    if (!actor.scope().equals(properties.getScopeId())
+        && jdbc.sql("SELECT count(*) FROM commerce.company WHERE scope_id=:scope")
+                .param("scope", actor.scope())
+                .query(Long.class)
+                .single()
+            > 0)
+      throw new COSError(
+          403,
+          "PLATFORM_APPROVAL_REQUIRED",
+          "Submit a company configuration request for platform administrator review.");
   }
 
   static void read(COSActor actor) {
@@ -256,7 +288,9 @@ public class FieldRegistryService {
   private static String technical(String value) {
     if (value == null || !value.matches("[a-z][a-z0-9_]{0,59}") || RESERVED.contains(value))
       throw new COSError(
-          422, "FIELD_ID_INVALID", "Use a unique lowercase field name that is not a core identifier.");
+          422,
+          "FIELD_ID_INVALID",
+          "Use a unique lowercase field name that is not a core identifier.");
     return value;
   }
 
@@ -282,7 +316,8 @@ public class FieldRegistryService {
 
   private static String label(String value) {
     if (value == null || value.isBlank() || value.trim().length() > 80)
-      throw new COSError(422, "FIELD_DEFINITION_INVALID", "Provide a label of at most 80 characters.");
+      throw new COSError(
+          422, "FIELD_DEFINITION_INVALID", "Provide a label of at most 80 characters.");
     return value.trim();
   }
 }

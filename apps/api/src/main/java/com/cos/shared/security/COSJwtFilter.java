@@ -18,7 +18,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 public class COSJwtFilter extends OncePerRequestFilter {
   private static final Set<String> AMBIENT =
-      Set.of("/api/v1/cos/login", "/api/v1/cos/auth/token", "/api/v1/cos/csrf", "/api/v1/cos/health", "/api/v1/cos/auth/sign-up");
+      Set.of(
+          "/api/v1/cos/login",
+          "/api/v1/cos/auth/token",
+          "/api/v1/cos/csrf",
+          "/api/v1/cos/health",
+          "/api/v1/cos/auth/sign-up");
   private final COSJwtService jwt;
   private final UserDetailsService users;
   private final COSProperties properties;
@@ -30,7 +35,8 @@ public class COSJwtFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+  protected void doFilterInternal(
+      HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws jakarta.servlet.ServletException, IOException {
     String bearer = bearer(request);
     String cookie = cookie(request);
@@ -42,17 +48,18 @@ public class COSJwtFilter extends OncePerRequestFilter {
     try {
       var claims = jwt.parse(token).getPayload();
       String scope = claims.get("entity_scope", String.class);
-      if (scope == null || !scope.equals(properties.getScopeId())) throw new JwtException("scope");
       if (jwt.revoked(claims.getId())) throw new JwtException("revoked");
       var user = users.loadUserByUsername(claims.getSubject());
+      String accountScope =
+          user instanceof COSLocalUser scoped ? scoped.scope() : properties.getScopeId();
+      if (scope == null || !scope.equals(accountScope)) throw new JwtException("scope");
       if (!user.isEnabled()
           || !user.isAccountNonLocked()
           || !user.isAccountNonExpired()
           || !user.isCredentialsNonExpired()) throw new JwtException("disabled");
       SecurityContextHolder.getContext()
           .setAuthentication(
-              UsernamePasswordAuthenticationToken.authenticated(
-                  user.getUsername(), null, user.getAuthorities()));
+              UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
       chain.doFilter(request, response);
     } catch (DataAccessException failure) {
       SecurityContextHolder.clearContext();

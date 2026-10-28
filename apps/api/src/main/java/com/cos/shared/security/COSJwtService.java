@@ -33,7 +33,9 @@ public class COSJwtService {
   public COSJwtService(COSProperties properties) {
     byte[] secret;
     try {
-      secret = Base64.getDecoder().decode(properties.getJwtSecret() == null ? "" : properties.getJwtSecret());
+      secret =
+          Base64.getDecoder()
+              .decode(properties.getJwtSecret() == null ? "" : properties.getJwtSecret());
     } catch (IllegalArgumentException e) {
       throw new IllegalStateException("COS_JWT_SECRET must be base64.");
     }
@@ -46,7 +48,9 @@ public class COSJwtService {
   public String issue(Authentication auth, String scope) {
     Instant now = Instant.now();
     List<String> roles =
-        auth.getAuthorities().stream().map(a -> a.getAuthority().replaceFirst("^ROLE_", "")).toList();
+        auth.getAuthorities().stream()
+            .map(a -> a.getAuthority().replaceFirst("^ROLE_", ""))
+            .toList();
     return Jwts.builder()
         .issuer("cos-hrms")
         .id(UUID.randomUUID().toString())
@@ -83,7 +87,9 @@ public class COSJwtService {
     response.addHeader(HttpHeaders.SET_COOKIE, cookie(request, token, TTL).toString());
   }
 
-  public void clear(jakarta.servlet.http.HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response) {
+  public void clear(
+      jakarta.servlet.http.HttpServletRequest request,
+      jakarta.servlet.http.HttpServletResponse response) {
     response.addHeader(HttpHeaders.SET_COOKIE, cookie(request, "", Duration.ZERO).toString());
   }
 
@@ -127,16 +133,18 @@ public class COSJwtService {
   private String presentedCookie(HttpServletRequest request) {
     if (request.getCookies() == null) return null;
     for (Cookie cookie : request.getCookies())
-      if (COOKIE.equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank())
-        return cookie.getValue();
+      if (COOKIE.equals(cookie.getName())
+          && cookie.getValue() != null
+          && !cookie.getValue().isBlank()) return cookie.getValue();
     return null;
   }
 
-  private ResponseCookie cookie(jakarta.servlet.http.HttpServletRequest request, String value, Duration age) {
+  private ResponseCookie cookie(
+      jakarta.servlet.http.HttpServletRequest request, String value, Duration age) {
     return ResponseCookie.from(COOKIE, value)
         .httpOnly(true)
         .secure(properties.isCookieSecure() || request.isSecure())
-        .sameSite(request.isSecure() ? "Strict" : "Lax")
+        .sameSite(properties.isCookieSecure() || request.isSecure() ? "Strict" : "Lax")
         .path("/")
         .maxAge(age)
         .build();

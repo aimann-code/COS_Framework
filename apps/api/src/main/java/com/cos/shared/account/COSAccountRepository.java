@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 @Profile("!oidc")
@@ -44,10 +45,16 @@ public class COSAccountRepository {
         .list();
   }
 
+  @Transactional
   public void createActive(
       String scope, String name, String email, String passwordHash, String role, String reviewer) {
+    lockLogin(email);
+    if (!findByEmail(email).isEmpty())
+      throw com.cos.shared.COSError.conflict(
+          "COMPANY_LOGIN_TAKEN", "This login is already in use.");
     jdbc.sql(
-            "INSERT INTO auth.account(account_id,scope_id,full_name,email,password_hash,status,role,reviewed_at,reviewed_by)"
+            "INSERT INTO"
+                + " auth.account(account_id,scope_id,full_name,email,password_hash,status,role,reviewed_at,reviewed_by)"
                 + " VALUES(:id,:scope,:name,:email,:password,'ACTIVE',:role,now(),:reviewer)")
         .param("id", UUID.randomUUID())
         .param("scope", scope)
@@ -76,7 +83,11 @@ public class COSAccountRepository {
         .optional();
   }
 
+  @Transactional
   public void create(String scope, String name, String email, String password) {
+    lockLogin(email);
+    // Login has no company selector: a public signup must never shadow a company identity.
+    if (!findByEmail(email).isEmpty() || companyLoginReserved(email)) return;
     jdbc.sql(
             "INSERT INTO auth.account(account_id,scope_id,full_name,email,password_hash)"
                 + " VALUES(:id,:scope,:name,:email,:password) ON CONFLICT(scope_id,email) DO"
@@ -87,6 +98,21 @@ public class COSAccountRepository {
         .param("email", email)
         .param("password", password)
         .update();
+  }
+
+  @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+  public void lockLogin(String email) {
+    jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+        .param("key", "cos-login:" + email)
+        .query((row, number) -> Boolean.TRUE)
+        .single();
+  }
+
+  private boolean companyLoginReserved(String email) {
+    return jdbc.sql("SELECT EXISTS(SELECT 1 FROM auth.company_request WHERE login_email=:email)")
+        .param("email", email)
+        .query(Boolean.class)
+        .single();
   }
 
   public List<Account> pending(String scope) {

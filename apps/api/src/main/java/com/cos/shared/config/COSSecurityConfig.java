@@ -2,12 +2,12 @@ package com.cos.shared.config;
 
 import java.util.Arrays;
 import java.util.List;
-import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -55,17 +55,21 @@ public class COSSecurityConfig {
                 .build());
     return username -> {
       String canonical = username.strip().toLowerCase(java.util.Locale.ROOT);
-      if (bootstrap.userExists(canonical)) return bootstrap.loadUserByUsername(canonical);
+      if (bootstrap.userExists(canonical))
+        return new com.cos.shared.security.COSLocalUser(
+            p.getScopeId(), bootstrap.loadUserByUsername(canonical));
       var matches = accounts.findByEmail(canonical);
       if (matches.size() != 1)
         throw new org.springframework.security.core.userdetails.UsernameNotFoundException(
             "Invalid credentials");
       var account = matches.getFirst();
-      return User.withUsername(account.email())
-          .password(account.password())
-          .roles(account.role() == null ? "VIEWER" : account.role())
-          .disabled(!account.status().equals("ACTIVE"))
-          .build();
+      return new com.cos.shared.security.COSLocalUser(
+          account.scope(),
+          User.withUsername(account.email())
+              .password(account.password())
+              .roles(account.role() == null ? "VIEWER" : account.role())
+              .disabled(!account.status().equals("ACTIVE"))
+              .build());
     };
   }
 
@@ -114,8 +118,7 @@ public class COSSecurityConfig {
           CorsConfigurationSource source,
       com.cos.shared.security.COSJwtFilter jwtFilter,
       com.cos.shared.security.COSJwtService jwt,
-      COSProperties properties,
-      com.cos.shared.account.COSAccountRepository accounts)
+      COSProperties properties)
       throws Exception {
     http.addFilterBefore(
             new com.cos.shared.security.COSAuthThrottle(),
@@ -126,6 +129,10 @@ public class COSSecurityConfig {
             org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
                 .class)
         .cors(c -> c.configurationSource(source))
+        .securityContext(
+            c ->
+                c.securityContextRepository(
+                    new org.springframework.security.web.context.NullSecurityContextRepository()))
         .csrf(
             c ->
                 c.csrfTokenRepository(new HttpSessionCsrfTokenRepository())
@@ -146,6 +153,14 @@ public class COSSecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/cos/company-requests/catalog")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/cos/services/catalog")
+                    .permitAll()
+                    .requestMatchers(
+                        HttpMethod.POST,
+                        "/api/v1/cos/companies/register",
+                        "/api/v1/cos/companies/*/payment",
+                        "/api/v1/cos/companies/*/status")
+                    .permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/cos/company-requests")
                     .permitAll()
                     .anyRequest()
@@ -155,11 +170,8 @@ public class COSSecurityConfig {
                 c.loginProcessingUrl("/api/v1/cos/login")
                     .successHandler(
                         (req, res, auth) -> {
-                          var matches = accounts.findByEmail(auth.getName().toLowerCase(java.util.Locale.ROOT));
                           String scope =
-                              matches.size() == 1
-                                  ? matches.getFirst().scope()
-                                  : properties.getScopeId();
+                              com.cos.shared.security.COSActor.from(auth, properties).scope();
                           jwt.attach(req, res, auth, scope);
                           res.setStatus(204);
                         })

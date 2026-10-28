@@ -48,6 +48,11 @@ public class COSRequestService {
       throw new COSError(
           422, "OPERATION_NOT_REGISTERED", "Choose a registered component and operation.");
     if (dto.operation().equals("CONFIGURATION")) {
+      if (repository.commercialScope(actor.scope()))
+        throw new COSError(
+            403,
+            "PLATFORM_APPROVAL_REQUIRED",
+            "Submit a company configuration request for platform administrator review.");
       if (!actor.admin()) actor.require("REGISTRAR");
     } else actor.require("REGISTRAR");
     if (key == null || !key.matches("[A-Za-z0-9_-]{8,128}"))

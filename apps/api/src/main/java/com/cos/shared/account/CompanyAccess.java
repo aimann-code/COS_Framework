@@ -50,9 +50,7 @@ public final class CompanyAccess {
       @NotEmpty @Size(max = 20) List<@NotBlank String> modules) {}
 
   public record Decision(
-      @NotBlank String decision,
-      List<@NotBlank String> modules,
-      @Size(max = 500) String remarks) {}
+      @NotBlank String decision, List<@NotBlank String> modules, @Size(max = 500) String remarks) {}
 
   public record RequestView(
       String request_id,
@@ -77,10 +75,10 @@ public final class CompanyAccess {
       this.jdbc = jdbc;
     }
 
-    public void insert(
-        UUID id, String company, String email, String passwordHash, String modules) {
+    public void insert(UUID id, String company, String email, String passwordHash, String modules) {
       jdbc.sql(
-              "INSERT INTO auth.company_request(request_id,readable_id,company_name,login_email,password_hash,requested_modules)"
+              "INSERT INTO"
+                  + " auth.company_request(request_id,readable_id,company_name,login_email,password_hash,requested_modules)"
                   + " VALUES(:id,:readable,:company,:email,:password,:modules)")
           .param("id", id)
           .param("readable", "LOCAL-CO-" + id)
@@ -116,7 +114,8 @@ public final class CompanyAccess {
 
     public void approve(UUID id, String scope, String modules, String actor) {
       jdbc.sql(
-              "UPDATE auth.company_request SET status='APPROVED',scope_id=:scope,granted_modules=:modules,reviewed_by=:actor,reviewed_at=now()"
+              "UPDATE auth.company_request SET"
+                  + " status='APPROVED',scope_id=:scope,granted_modules=:modules,reviewed_by=:actor,reviewed_at=now()"
                   + " WHERE request_id=:id AND status='PENDING'")
           .param("id", id)
           .param("scope", scope)
@@ -127,8 +126,9 @@ public final class CompanyAccess {
 
     public void reject(UUID id, String actor, String remarks) {
       jdbc.sql(
-              "UPDATE auth.company_request SET status='REJECTED',reviewed_by=:actor,reviewed_at=now(),remarks=:remarks"
-                  + " WHERE request_id=:id AND status='PENDING'")
+              "UPDATE auth.company_request SET"
+                  + " status='REJECTED',reviewed_by=:actor,reviewed_at=now(),remarks=:remarks WHERE"
+                  + " request_id=:id AND status='PENDING'")
           .param("id", id)
           .param("actor", actor)
           .param("remarks", remarks)
@@ -168,6 +168,7 @@ public final class CompanyAccess {
     private final PasswordEncoder encoder;
     private final COSProperties properties;
     private final COSAuditService audit;
+    private final JdbcClient jdbc;
 
     public CompanyAccessService(
         CompanyRequestRepository requests,
@@ -179,7 +180,8 @@ public final class CompanyAccess {
         List<COSComponent> components,
         PasswordEncoder encoder,
         COSProperties properties,
-        COSAuditService audit) {
+        COSAuditService audit,
+        JdbcClient jdbc) {
       this.requests = requests;
       this.accounts = accounts;
       this.metadata = metadata;
@@ -190,6 +192,7 @@ public final class CompanyAccess {
       this.encoder = encoder;
       this.properties = properties;
       this.audit = audit;
+      this.jdbc = jdbc;
     }
 
     public Catalog catalog() {
@@ -202,11 +205,13 @@ public final class CompanyAccess {
         throw new COSError(422, "PASSWORD_INVALID", "Use a password of 12 to 72 characters.");
       String email = input.email().strip().toLowerCase(Locale.ROOT);
       String chosen = checkedModules(input.modules());
+      accounts.lockLogin(email);
       if (!accounts.findByEmail(email).isEmpty())
         throw COSError.conflict("COMPANY_LOGIN_TAKEN", "This login is already in use.");
       UUID id = UUID.randomUUID();
       try {
-        requests.insert(id, input.company_name().strip(), email, encoder.encode(input.password()), chosen);
+        requests.insert(
+            id, input.company_name().strip(), email, encoder.encode(input.password()), chosen);
       } catch (DuplicateKeyException e) {
         throw COSError.conflict("COMPANY_LOGIN_TAKEN", "This login is already in use.");
       }
@@ -233,9 +238,23 @@ public final class CompanyAccess {
         if (note.isBlank())
           throw new COSError(422, "REMARKS_REQUIRED", "A rejection reason is required.");
         requests.reject(id, actor.id(), note);
-        audit.record(actor.scope(), actor.id(), null, "COMPANY_REJECTED", id.toString(), "REJECTED");
+        audit.record(
+            actor.scope(), actor.id(), null, "COMPANY_REJECTED", id.toString(), "REJECTED");
         return;
       }
+      // New access is granted only inside the transaction recording verified payment.
+      // Historical approved scopes/accounts remain intact.
+      if (jdbc.sql(
+                  "SELECT count(*) FROM commerce.payment WHERE company_id=:id AND"
+                      + " status='APPROVED'")
+              .param("id", id)
+              .query(Long.class)
+              .single()
+          == 0)
+        throw COSError.conflict(
+            "PAYMENT_VERIFICATION_REQUIRED",
+            "Record and verify payment in the platform workspace before activating company"
+                + " access.");
       String granted = checkedModules(input.modules() == null ? List.of() : input.modules());
       if (!accounts.findByEmail(row.email()).isEmpty())
         throw COSError.conflict("COMPANY_LOGIN_TAKEN", "This login is already in use.");
@@ -251,7 +270,8 @@ public final class CompanyAccess {
     }
 
     private void requireOperator(COSActor actor) {
-      if (!actor.admin() || !actor.scope().equals(properties.getScopeId())) throw COSError.forbidden();
+      if (!actor.admin() || !actor.scope().equals(properties.getScopeId()))
+        throw COSError.forbidden();
     }
 
     private List<String> knownModules() {
@@ -308,8 +328,11 @@ public final class CompanyAccess {
 
     @PostMapping
     public ResponseEntity<Void> submit(@Valid @RequestBody Submit input) {
-      companies.submit(input);
-      return ResponseEntity.accepted().build();
+      throw new COSError(
+          410,
+          "COMPANY_REGISTRATION_MOVED",
+          "Use company registration to select services and receive a server-priced payment"
+              + " request.");
     }
 
     @GetMapping

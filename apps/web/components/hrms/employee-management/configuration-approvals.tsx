@@ -39,13 +39,15 @@ function sameField(current: FieldDefinition, proposed: FieldDefinition) {
 
 function fieldChanges(current: FieldDefinition[], proposed: FieldDefinition[]) {
   const known = new Map(current.map((field) => [field.id, field]));
-  return proposed.flatMap((field) => {
-    const previous = known.get(field.id);
-    if (!previous) return [{ field, kind: "New" as const }];
-    if (!sameField(previous, field))
-      return [{ field, kind: "Changed" as const }];
-    return [];
-  });
+  return proposed.flatMap<{ field: FieldDefinition; kind: "New" | "Changed" }>(
+    (field) => {
+      const previous = known.get(field.id);
+      if (!previous) return [{ field, kind: "New" as const }];
+      if (!sameField(previous, field))
+        return [{ field, kind: "Changed" as const }];
+      return [];
+    },
+  );
 }
 
 export default function ConfigurationApprovals({
