@@ -1,4 +1,4 @@
-# EMPRegister project guidance
+# COS_Framework project guidance
 
 ## Standards and decision traceability
 

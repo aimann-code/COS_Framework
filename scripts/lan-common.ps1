@@ -53,7 +53,7 @@ function Ensure-LanFirewallRule {
         [int]$Port,
         [string]$Label
     )
-    $ruleName = "EMPRegister $Label (TCP $Port)"
+    $ruleName = "COS_Framework $Label (TCP $Port)"
     if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
         return
     }
@@ -79,7 +79,7 @@ Run PowerShell as Administrator once, then:
 function Write-LanAccessBanner {
     param([string]$LanIp)
     Write-Output ''
-    Write-Output '=== EMPRegister — same Wi‑Fi / LAN access ==='
+    Write-Output '=== COS_Framework — same Wi‑Fi / LAN access ==='
     Write-Output 'This PC:     http://127.0.0.1:3000/sign-in'
     if ($LanIp) {
         Write-Output "Other devices: http://${LanIp}:3000/sign-in"
