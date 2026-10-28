@@ -100,6 +100,11 @@ export const onboarding = {
       method: "POST",
       body: JSON.stringify({ version }),
     }),
+  registerMany: (rows: ProfileData[]) =>
+    api<EmployeeProfile[]>("/onboarding/registrations", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    }),
   submit: (id: string, version: number) =>
     api<ProfileDraft>(`/onboarding/drafts/${id}/submit`, {
       method: "POST",

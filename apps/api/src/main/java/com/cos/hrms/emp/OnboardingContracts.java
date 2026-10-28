@@ -21,6 +21,9 @@ public final class OnboardingContracts {
 
   public record Command(@Min(1) int version) {}
 
+  public record BulkRegistration(
+      @NotNull @Size(min = 1, max = 50) List<@jakarta.validation.Valid Profile> rows) {}
+
   public record SaveDraftPayload(
       @Min(0) int expected_version,
       @Min(1) int configuration_version,

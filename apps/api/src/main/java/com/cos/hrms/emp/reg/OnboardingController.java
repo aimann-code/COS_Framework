@@ -20,12 +20,17 @@ import org.springframework.web.multipart.MultipartFile;
 public class OnboardingController {
   private final OnboardingService profiles;
   private final OnboardingDocumentService documents;
+  private final BulkRegistrationService bulk;
   private final COSProperties properties;
 
   public OnboardingController(
-      OnboardingService profiles, OnboardingDocumentService documents, COSProperties properties) {
+      OnboardingService profiles,
+      OnboardingDocumentService documents,
+      BulkRegistrationService bulk,
+      COSProperties properties) {
     this.profiles = profiles;
     this.documents = documents;
+    this.bulk = bulk;
     this.properties = properties;
   }
 
@@ -74,6 +79,12 @@ public class OnboardingController {
   public EmployeeView register(
       Authentication a, @PathVariable UUID id, @Valid @RequestBody Command input) {
     return profiles.register(actor(a), id, input.version());
+  }
+
+  @PostMapping("/registrations")
+  public List<EmployeeView> registerMany(
+      Authentication a, @Valid @RequestBody BulkRegistration input) {
+    return bulk.register(actor(a), input.rows());
   }
 
   @PostMapping("/drafts/{id}/submit")

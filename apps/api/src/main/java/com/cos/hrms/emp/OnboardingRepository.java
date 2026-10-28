@@ -210,6 +210,26 @@ public class OnboardingRepository {
         .optional();
   }
 
+  public boolean identifierInUse(String scope, String kind, String hash, UUID except) {
+    String column =
+        switch (kind) {
+          case "aadhaar" -> "aadhaar_hash";
+          case "pan" -> "pan_hash";
+          default -> throw new IllegalArgumentException("Unsupported identifier.");
+        };
+    Long count =
+        jdbc.sql(
+                "SELECT count(*) FROM people.employee WHERE scope_id=:scope AND "
+                    + column
+                    + "=:hash AND (:except IS NULL OR employee_id<>CAST(:except AS uuid))")
+            .param("scope", scope)
+            .param("hash", hash)
+            .param("except", except == null ? null : except.toString(), java.sql.Types.VARCHAR)
+            .query(Long.class)
+            .single();
+    return count != null && count > 0;
+  }
+
   public List<EmployeeSummary> employees(String scope, String search, UUID after, int limit) {
     String escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     return jdbc.sql(
@@ -334,6 +354,16 @@ public class OnboardingRepository {
         .param("event", reason)
         .param("version", e.version())
         .update();
+  }
+
+  public Optional<LocalDate> latestJoining(String scope, UUID employee) {
+    return jdbc.sql(
+            "SELECT max(joining_date) FROM people.employment_period WHERE scope_id=:scope AND"
+                + " employee_id=:id")
+        .param("scope", scope)
+        .param("id", employee)
+        .query(LocalDate.class)
+        .optional();
   }
 
   public void join(Employee e, LocalDate joining, boolean rejoin) {

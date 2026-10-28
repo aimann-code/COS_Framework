@@ -447,7 +447,8 @@
   position: relative;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   height: 44px;
   border: 1px solid #d9e2da;
@@ -1140,8 +1141,15 @@
   font-size: 12px;
 }
 .field input,
-.field select {
+.field select,
+.field textarea {
   font-size: 13px;
+}
+.field textarea {
+  height: auto;
+  min-height: 140px;
+  resize: vertical;
+  font-family: inherit;
 }
 .field input::placeholder {
   font-size: 12px;
@@ -1749,4 +1757,53 @@
 }
 .leaveDialog::backdrop {
   background: #142f2bbb;
+}
+
+.batch {
+  margin-bottom: 22px;
+}
+.batch h2 {
+  text-wrap: balance;
+}
+.batch p,
+.batch li {
+  text-wrap: pretty;
+}
+.batchPreview {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.batchPreview th,
+.batchPreview td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.batchPreview th {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.batchCount {
+  margin-right: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.batchResult {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+.batchResult a {
+  color: var(--accent);
+  font-weight: 700;
+}
+.batch :global(.error-callout) ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
 }

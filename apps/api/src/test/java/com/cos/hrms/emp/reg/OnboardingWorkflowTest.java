@@ -67,6 +67,7 @@ class OnboardingWorkflowTest {
   }
 
   @Autowired OnboardingService service;
+  @Autowired BulkRegistrationService bulk;
   @Autowired OnboardingDocumentService documents;
   @Autowired OnboardingImagePolicy images;
   @Autowired OnboardingAccountService access;
@@ -601,6 +602,135 @@ class OnboardingWorkflowTest {
         service.previewWorkEmail(
             hr, UUID.fromString(draft.draft_id()), "Collision Name", "generate", null);
     assertThat(preview.proposed_email()).isEqualTo("collision.name@example.mhl.test");
+  }
+
+  long employeeCount() {
+    return jdbc.sql("SELECT count(*) FROM people.employee WHERE scope_id='TEST'")
+        .query(Long.class)
+        .single();
+  }
+
+  String freshPan() {
+    int n = Math.floorMod(UUID.randomUUID().hashCode(), 10000);
+    return "SYNTH" + String.format("%04d", n) + "Z";
+  }
+
+  @Test
+  void bulkRegistrationCommitsNewAndRejoinRowsTogether() {
+    var existing = register(sample());
+    long before = employeeCount();
+    var created =
+        bulk.register(
+            hr,
+            List.of(
+                sample(),
+                with(
+                    with(with(sample(), "joiner", "Rejoiner"), "joining", "2026-11-01"),
+                    "previous_id",
+                    existing.employee_code())));
+    assertThat(created).hasSize(2);
+    assertThat(employeeCount()).isEqualTo(before + 1);
+    assertThat(created.get(1).employee_id()).isEqualTo(existing.employee_id());
+    assertThat(created.get(1).employee_code()).isEqualTo(existing.employee_code());
+    assertThat(created.get(0).work_email()).endsWith("@example.mhl.test");
+    assertThat(created.get(1).work_email()).isEqualTo(existing.work_email());
+  }
+
+  @Test
+  void bulkRegistrationRejectsTheBatchWhenOneRowIsInvalid() {
+    long before = employeeCount();
+    assertThatThrownBy(() -> bulk.register(hr, List.of(sample(), with(sample(), "phone", ""))))
+        .isInstanceOf(COSError.class)
+        .satisfies(
+            error -> {
+              var e = (COSError) error;
+              assertThat(e.code).isEqualTo("BATCH_INVALID");
+              assertThat(e.fields).containsKey("row_2_phone");
+            });
+    assertThat(employeeCount()).isEqualTo(before);
+  }
+
+  @Test
+  void bulkRegistrationRejectsDuplicateIdentifiersBeforeAnyWrite() throws Exception {
+    String pan = freshPan();
+    long before = employeeCount();
+    assertThatThrownBy(
+            () -> bulk.register(hr, List.of(with(sample(), "pan", pan), with(sample(), "pan", pan))))
+        .isInstanceOf(COSError.class)
+        .satisfies(
+            error -> {
+              var e = (COSError) error;
+              assertThat(e.fields.get("row_2_pan")).contains("already");
+            });
+    assertThat(employeeCount()).isEqualTo(before);
+    var draft = save(hr, with(sample(), "pan", pan));
+    documents.upload(hr, UUID.fromString(draft.draft_id()), draft.version(), "PAN", photo());
+    service.register(
+        hr,
+        UUID.fromString(draft.draft_id()),
+        service.getDraft(hr, UUID.fromString(draft.draft_id())).version());
+    long afterOne = employeeCount();
+    assertThatThrownBy(() -> bulk.register(hr, List.of(with(sample(), "pan", pan))))
+        .isInstanceOf(COSError.class)
+        .satisfies(
+            error -> assertThat(((COSError) error).fields.get("row_1_pan")).contains("already"));
+    assertThat(employeeCount()).isEqualTo(afterOne);
+  }
+
+  Profile rejoin(EmployeeView existing, String joining) {
+    return with(
+        with(with(sample(), "joiner", "Rejoiner"), "joining", joining),
+        "previous_id",
+        existing.employee_code());
+  }
+
+  @Test
+  void bulkRegistrationRejectsRepeatedOrEarlyRejoinBeforeAnyWrite() {
+    var existing = register(sample());
+    long before = employeeCount();
+    assertThatThrownBy(
+            () ->
+                bulk.register(
+                    hr, List.of(rejoin(existing, "2026-12-01"), rejoin(existing, "2027-02-01"))))
+        .isInstanceOf(COSError.class)
+        .satisfies(
+            error -> {
+              var e = (COSError) error;
+              assertThat(e.code).isEqualTo("BATCH_INVALID");
+              assertThat(e.fields.get("row_2_previous_id")).contains("already being rejoined");
+            });
+    assertThatThrownBy(() -> bulk.register(hr, List.of(rejoin(existing, "2026-01-10"))))
+        .isInstanceOf(COSError.class)
+        .satisfies(
+            error ->
+                assertThat(((COSError) error).fields.get("row_1_joining"))
+                    .contains("follow the previous joining date"));
+    assertThat(employeeCount()).isEqualTo(before);
+    assertThat(service.employee(hr, UUID.fromString(existing.employee_id())).display_name())
+        .isEqualTo(existing.display_name());
+    assertThat(service.employee(hr, UUID.fromString(existing.employee_id())).version())
+        .isEqualTo(existing.version());
+  }
+
+  @Test
+  void bulkRegistrationRejectsEmployeesAndAdministrators() throws Exception {
+    assertThatThrownBy(() -> bulk.register(admin, List.of(sample())))
+        .isInstanceOf(COSError.class)
+        .satisfies(error -> assertThat(((COSError) error).status).isEqualTo(403));
+    assertThatThrownBy(
+            () ->
+                bulk.register(
+                    new COSActor("synthetic-employee", "TEST", Set.of("EMPLOYEE")),
+                    List.of(sample())))
+        .isInstanceOf(COSError.class)
+        .satisfies(error -> assertThat(((COSError) error).status).isEqualTo(403));
+    mvc.perform(
+            post("/api/v1/cos/onboarding/registrations")
+                .with(user("admin").roles("ADMIN"))
+                .with(csrf())
+                .contentType("application/json")
+                .content(json.write(Map.of("rows", List.of(sample())))))
+        .andExpect(status().isForbidden());
   }
 
   @Test

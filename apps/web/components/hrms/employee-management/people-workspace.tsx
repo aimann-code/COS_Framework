@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { api, logout, type Session } from "../../../lib/shared/cos-api";
 import EmployeeOnboardingPreview from "./registration/employee-onboarding-preview";
+import BulkRegistration from "./registration/bulk-registration";
 import LeaveDesk from "../leave-management/leave-desk";
 import PeopleShell from "./people-shell";
 import PeopleScreenBody from "./people-screen-body";
@@ -173,6 +174,17 @@ export default function PeopleWorkspace() {
         })
       }
     >
+      {path === "/people/register" && hr && (
+        <BulkRegistration
+          onRegistered={(employees) =>
+            setNotice(
+              `Registered ${employees.length} employee${employees.length === 1 ? "" : "s"}: ${employees
+                .map((employee) => employee.employee_code)
+                .join(", ")}.`,
+            )
+          }
+        />
+      )}
       {form}
       <div className={styles.pageHeading} hidden={!!form}>
         <div>
