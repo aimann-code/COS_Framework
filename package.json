@@ -1,0 +1,30 @@
+{
+  "name": "cos-hrms",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "dev:lan": "pwsh -NoProfile -File scripts/dev-lan.ps1",
+    "network:url": "pwsh -NoProfile -File scripts/network-url.ps1",
+    "build": "npm run build --workspace apps/web",
+    "start": "npm run start --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "test:e2e": "playwright test",
+    "test:home": "playwright test --config playwright.home.config.ts",
+    "test:commerce": "playwright test --config playwright.commerce.config.ts",
+    "api:dev": "pwsh -NoProfile -File scripts/backend.ps1",
+    "api:test": "pwsh -NoProfile -File scripts/backend.ps1 test",
+    "api:build": "pwsh -NoProfile -File scripts/backend.ps1 package",
+    "test:connected": "playwright test --config playwright.connected.config.ts",
+    "api:format": "pwsh -NoProfile -File scripts/format-api.ps1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "prettier": "3.9.10"
+  }
+}

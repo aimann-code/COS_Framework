@@ -147,3 +147,21 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local document tooling and browser test artifacts
+tmp/
+test-results/
+playwright-report/
+
+# Backend build, local tools, private credentials and database
+.tools/
+.local/
+**/target/
+
+.next-*/
+
+/test-results-connected/
+
+/test-results-demo-final/
+
+/test-results-onboarding/
