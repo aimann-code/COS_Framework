@@ -37,6 +37,28 @@ public class COSAccountRepository {
     this.jdbc = jdbc;
   }
 
+  public List<Account> findByEmail(String email) {
+    return jdbc.sql("SELECT * FROM auth.account WHERE email=:email")
+        .param("email", email)
+        .query(mapper)
+        .list();
+  }
+
+  public void createActive(
+      String scope, String name, String email, String passwordHash, String role, String reviewer) {
+    jdbc.sql(
+            "INSERT INTO auth.account(account_id,scope_id,full_name,email,password_hash,status,role,reviewed_at,reviewed_by)"
+                + " VALUES(:id,:scope,:name,:email,:password,'ACTIVE',:role,now(),:reviewer)")
+        .param("id", UUID.randomUUID())
+        .param("scope", scope)
+        .param("name", name)
+        .param("email", email)
+        .param("password", passwordHash)
+        .param("role", role)
+        .param("reviewer", reviewer)
+        .update();
+  }
+
   public Optional<Account> find(String scope, String email) {
     return jdbc.sql("SELECT * FROM auth.account WHERE scope_id=:scope AND email=:email")
         .param("scope", scope)

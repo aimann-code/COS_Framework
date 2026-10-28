@@ -10,6 +10,24 @@ import type {
 
 export type Account = { account_id: string; full_name: string; email: string };
 
+export type CompanyCatalog = {
+  suite: string;
+  engine: string;
+  modules: string[];
+};
+
+export type CompanyRequest = {
+  request_id: string;
+  company_name: string;
+  login_email: string;
+  requested_modules: string[];
+  granted_modules: string[];
+  scope_id?: string;
+  status: string;
+  remarks?: string;
+  created_at: string;
+};
+
 export type ConfigRequest = {
   request_id: string;
   request_version: number;
@@ -31,6 +49,8 @@ export type ScreenData = {
   accounts?: Account[];
   config?: Configuration;
   configs?: ConfigRequest[];
+  companyCatalog?: CompanyCatalog;
+  companyRequests?: CompanyRequest[];
   modules?: { module_code: string; name: string; route: string }[];
 };
 

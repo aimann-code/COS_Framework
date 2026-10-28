@@ -127,6 +127,7 @@ public class COSRequestService {
                         JsonNode.class)));
       }
     }
+    if (dto.operation().equals("CONFIGURATION")) replaceWaitingProposal(actor);
     UUID id = UUID.randomUUID();
     var r =
         new COSRequestRepository.Request(
@@ -228,6 +229,29 @@ public class COSRequestService {
     repository.status(id, "APPROVED", null, null, null, false);
     audit.record(actor.scope(), actor.id(), id, "RETRY_REQUEST", id.toString(), "APPROVED");
     return view(repository.get(id, actor.scope(), false), actor);
+  }
+
+  private void replaceWaitingProposal(COSActor actor) {
+    if (repository.configurationWaitingForSomeoneElse(actor.scope(), actor.id()))
+      throw COSError.conflict(
+          "CONFIGURATION_PENDING",
+          "Another configuration proposal is already waiting for admin approval.");
+    for (var pending : repository.pendingConfiguration(actor.scope(), actor.id())) {
+      repository.status(
+          pending.id(),
+          "REJECTED",
+          null,
+          "Replaced by a newer configuration proposal.",
+          null,
+          false);
+      audit.record(
+          actor.scope(),
+          actor.id(),
+          pending.id(),
+          "REPLACE_CONFIGURATION",
+          pending.id().toString(),
+          "REJECTED");
+    }
   }
 
   private void authorizeRead(COSRequestRepository.Request r, COSActor actor) {

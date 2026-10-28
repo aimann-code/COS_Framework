@@ -41,6 +41,15 @@ public final class ModuleCatalog {
           .update();
     }
 
+    public void setEnabled(String scope, String code, boolean enabled) {
+      jdbc.sql(
+              "UPDATE meta.module SET enabled=:enabled WHERE scope_id=:scope AND module_code=:code")
+          .param("enabled", enabled)
+          .param("scope", scope)
+          .param("code", code)
+          .update();
+    }
+
     public List<ModuleView> list(String scope) {
       return jdbc.sql("SELECT * FROM meta.module WHERE scope_id=:scope AND enabled=true ORDER BY module_code")
           .param("scope", scope)

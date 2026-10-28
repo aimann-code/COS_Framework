@@ -458,6 +458,11 @@ export default function AuthScreen({
             <span>Your access is assigned by your administrator.</span>
           </div>
         )}
+        {!signup && (
+          <p className="auth-switch">
+            <Link href="/company-register">Register a company</Link>
+          </p>
+        )}
       </div>
     </AuthShell>
   );

@@ -78,6 +78,47 @@ const sectionGroup: Record<string, string> = {
 const mask = (value: string) =>
   value.length > 4 ? `•••• ${value.slice(-4)}` : "••••";
 
+function fieldIssues(
+  fields: DraftField[],
+  data: Record<string, string>,
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const f of fields) {
+    const v = data[f.key]?.trim() ?? "";
+    const rejoinerReference =
+      f.key === "previous_id" && data.joiner === "Rejoiner";
+    if ((f.required || rejoinerReference) && !v)
+      next[f.key] = rejoinerReference
+        ? "Provide the employee code for the prior employment."
+        : "This information is needed before the next section.";
+    if (f.type === "email" && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))
+      next[f.key] = "Enter a valid email address.";
+    if (
+      f.type === "number" &&
+      v &&
+      (!Number.isFinite(Number(v)) || Number(v) < 0)
+    )
+      next[f.key] = "Enter an amount of zero or more.";
+  }
+  return next;
+}
+
+function profileGap(
+  sectionList: { id: string; fields: DraftField[] }[],
+  data: Record<string, string>,
+) {
+  for (let i = 0; i < sectionList.length; i++) {
+    if (
+      sectionList[i].id === "work-email" &&
+      (data.work_email_mode || "generate") === "existing" &&
+      !data.work_email_existing?.trim()
+    )
+      return i;
+    if (Object.keys(fieldIssues(sectionList[i].fields, data)).length) return i;
+  }
+  return sectionList.length;
+}
+
 export default function EmployeeOnboardingPreview({
   live,
 }: { live?: LiveRegistration } = {}) {
@@ -95,27 +136,38 @@ export default function EmployeeOnboardingPreview({
         !coreFieldKeys.has(f.id) &&
         !["pan_number", "aadhaar_number"].includes(f.id),
     ) ?? [];
+  const configuredField = (
+    f: (typeof additional)[number],
+  ): DraftField => ({
+    key: f.id,
+    label: f.label,
+    type:
+      f.type === "number" ? "number" : f.type === "date" ? "date" : "text",
+    required: f.required,
+    sensitive: f.sensitive,
+  });
+  const placed = new Set<string>();
+  const profileSections = draftSections.map((section) => {
+    const extras = additional.filter((f) => f.group_key === section.id);
+    for (const field of extras) placed.add(field.id);
+    return extras.length
+      ? {
+          ...section,
+          fields: [...section.fields, ...extras.map(configuredField)],
+        }
+      : section;
+  });
+  const unplaced = additional.filter((f) => !placed.has(f.id));
   const sections = [
-    ...draftSections,
-    ...(additional.length
+    ...profileSections,
+    ...(unplaced.length
       ? [
           {
             id: "additional",
             title: "Company fields",
             description:
-              "Additional fields from the approved company configuration.",
-            fields: additional.map((f) => ({
-              key: f.id,
-              label: f.label,
-              type:
-                f.type === "number"
-                  ? ("number" as const)
-                  : f.type === "date"
-                    ? ("date" as const)
-                    : ("text" as const),
-              required: f.required,
-              sensitive: f.sensitive,
-            })),
+              "Additional fields that are not assigned to a profile section.",
+            fields: unplaced.map(configuredField),
           },
         ]
       : []),
@@ -185,7 +237,10 @@ export default function EmployeeOnboardingPreview({
         (s) =>
           s.fields.some((f) => f.key === key) || sectionGroup[s.id] === key,
       );
-      if (index >= 0) setSection(index);
+      if (index >= 0) {
+        setReached((open) => Math.max(open, index));
+        setSection(index);
+      }
     }
   }
   async function saveLive() {
@@ -351,6 +406,14 @@ export default function EmployeeOnboardingPreview({
   }
 
   const [section, setSection] = useState(0);
+  const [reached, setReached] = useState(() =>
+    initial
+      ? profileGap(sections, {
+          work_email_mode: "generate",
+          ...(initial.values ?? {}),
+        })
+      : 0,
+  );
   const [values, setValues] = useState<Record<string, string>>({
     work_email_mode: "generate",
     ...(initial?.values ?? {}),
@@ -433,7 +496,24 @@ export default function EmployeeOnboardingPreview({
     const first = Object.keys(errors)[0];
     if (first) document.getElementById(`onboarding-${first}`)?.focus();
   }, [errors]);
+  const gap = profileGap(sections, values);
+  const limit = Math.min(reached, gap);
   function go(index: number) {
+    if (index > section && index > limit) {
+      const blocked = sections[Math.min(gap, sections.length - 1)];
+      const target = index >= sections.length ? "Review" : sections[index].title;
+      setNotice(
+        gap < reached
+          ? `Complete ${blocked.title} before opening a later section.`
+          : `Finish ${current.title} before opening ${target}.`,
+      );
+      if (gap < sections.length && gap !== section) {
+        setErrors(fieldIssues(sections[gap].fields, values));
+        setSection(gap);
+      }
+      window.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
     setSection(index);
     setNotice("");
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -447,48 +527,72 @@ export default function EmployeeOnboardingPreview({
     });
     setFinished(false);
   }
-  function validate(fields: DraftField[]) {
-    const next: Record<string, string> = {};
-    for (const f of fields) {
-      const v = values[f.key]?.trim() ?? "";
-      if (f.required && !v)
-        next[f.key] = "This information is needed before registration.";
-      if (f.type === "email" && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))
-        next[f.key] = "Enter a valid email address.";
-      if (
-        f.type === "number" &&
-        v &&
-        (!Number.isFinite(Number(v)) || Number(v) < 0)
-      )
-        next[f.key] = "Enter an amount of zero or more.";
-    }
-    setErrors(next);
-    return Object.keys(next);
+  function sectionProblems(index: number) {
+    const problems = fieldIssues(sections[index].fields, values);
+    if (
+      sections[index].id === "work-email" &&
+      (values.work_email_mode || "generate") === "existing" &&
+      !values.work_email_existing?.trim()
+    )
+      problems.work_email_existing =
+        "Enter the employee's existing company email address.";
+    return problems;
   }
   function continueStep() {
-    if (section === sections.length - 1) {
-      openReview();
-      return;
-    }
-    const invalid = validate(current.fields);
+    const problems = sectionProblems(section);
+    const invalid = Object.keys(problems);
     if (invalid.length) {
+      setErrors(problems);
+      setNotice(
+        `Complete the required details in ${current.title} before the next section.`,
+      );
       document.getElementById(`onboarding-${invalid[0]}`)?.focus();
       return;
     }
-    setVisited((v) => [...new Set([...v, current.id])]);
-    go(section + 1);
-  }
-  function openReview() {
-    const invalid = validate(allFields);
-    if (invalid.length) {
-      const index = sections.findIndex((s) =>
-        s.fields.some((f) => f.key === invalid[0]),
-      );
-      setSection(index);
-      setNotice("Complete the highlighted information before review.");
+    const earlier = profileGap(sections, values);
+    if (earlier < section) {
+      setErrors(fieldIssues(sections[earlier].fields, values));
+      setSection(earlier);
+      setNotice(`Complete ${sections[earlier].title} before moving ahead.`);
+      window.scrollTo({ top: 0, behavior: "instant" });
       return;
     }
-    go(sections.length);
+    setVisited((v) => [...new Set([...v, current.id])]);
+    setReached((open) => Math.max(open, section + 1));
+    setNotice("");
+    setSection(section + 1);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+  function openReview() {
+    const earlier = profileGap(sections, values);
+    const walkedToEnd =
+      section === sections.length - 1 && earlier >= sections.length;
+    if (!walkedToEnd && Math.min(reached, earlier) < sections.length) {
+      if (earlier < sections.length) {
+        setErrors(fieldIssues(sections[earlier].fields, values));
+        setSection(earlier);
+        setNotice(`Complete ${sections[earlier].title} before review.`);
+      } else {
+        setNotice(
+          `Continue through ${sections[Math.min(reached, sections.length - 1)].title} before review.`,
+        );
+      }
+      window.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
+    if (earlier < sections.length) {
+      setErrors(fieldIssues(sections[earlier].fields, values));
+      setSection(earlier);
+      setNotice(`Complete ${sections[earlier].title} before review.`);
+      window.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
+    if (section < sections.length)
+      setVisited((v) => [...new Set([...v, current.id])]);
+    setReached((open) => Math.max(open, sections.length));
+    setNotice("");
+    setSection(sections.length);
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
   function addEntry(group: string) {
     setGroups((g) => ({
@@ -508,7 +612,11 @@ export default function EmployeeOnboardingPreview({
     return (
       <DraftInput
         key={key}
-        field={f}
+        field={
+          f.key === "previous_id" && data.joiner === "Rejoiner"
+            ? { ...f, required: true }
+            : f
+        }
         value={data[f.key] ?? ""}
         id={`onboarding-${key}`}
         error={error}
@@ -839,17 +947,21 @@ export default function EmployeeOnboardingPreview({
               <div className={styles.stepsTitle}>
                 EMPLOYEE PROFILE
                 <span>
-                  {visited.length} / {sections.length} reviewed
+                  {limit >= sections.length
+                    ? "All sections open"
+                    : "Complete each section to open the next"}
                 </span>
               </div>
               {sections.map((s, i) => {
                 const Icon = icons[i] ?? ShieldCheck;
+                const locked = i > limit;
                 return (
                   <button
                     type="button"
                     key={s.id}
-                    className={`${styles.step} ${i === section ? styles.currentStep : ""}`}
+                    className={`${styles.step} ${i === section ? styles.currentStep : ""} ${locked ? styles.lockedStep : ""}`}
                     aria-current={i === section ? "step" : undefined}
+                    disabled={locked}
                     onClick={() => go(i)}
                   >
                     <span className={styles.stepIcon}>
@@ -866,8 +978,11 @@ export default function EmployeeOnboardingPreview({
               })}
               <button
                 type="button"
-                className={`${styles.step} ${review ? styles.currentStep : ""}`}
+                className={`${styles.step} ${review ? styles.currentStep : ""} ${reached < sections.length && section < sections.length - 1 ? styles.lockedStep : ""}`}
                 aria-current={review ? "step" : undefined}
+                disabled={
+                  reached < sections.length && section < sections.length - 1
+                }
                 onClick={openReview}
               >
                 <span className={styles.stepIcon}>
@@ -1050,6 +1165,10 @@ export default function EmployeeOnboardingPreview({
                           values={values}
                           setValues={setValues}
                           disabled={busy}
+                          existingError={errors.work_email_existing}
+                          onExistingChange={(value) =>
+                            update("work_email_existing", value)
+                          }
                           ensureSaved={
                             draftVersion === 0
                               ? async () => {
@@ -1108,10 +1227,11 @@ export default function EmployeeOnboardingPreview({
                       {sectionGroup[current.id] &&
                         repeater(sectionGroup[current.id])}
                       <div className={styles.optionalNote}>
-                        <span>*</span>{" "}
-                        {live
-                          ? "Required information. Optional details can be completed as available."
-                          : "Required in this preview. Other details can be entered as available."}
+                        <span>*</span> Required details in this section come
+                        first. Optional details can stay blank.{" "}
+                        {section < sections.length - 1
+                          ? `${sections[section + 1].title} opens after this section is complete.`
+                          : "Review opens after this section is complete."}
                       </div>
                     </>
                   )}
@@ -1136,7 +1256,7 @@ export default function EmployeeOnboardingPreview({
                             ? () => void saveLive()
                             : () =>
                                 setNotice(
-                                  "Your draft is held in this open page only. Move between sections freely; refresh clears it.",
+                                  "Your draft is held in this open page only. Refresh clears it.",
                                 )
                         }
                       >
@@ -1163,7 +1283,7 @@ export default function EmployeeOnboardingPreview({
                           : "Finish preview"
                         : section === sections.length - 1
                           ? "Review profile"
-                          : "Continue"}
+                          : `Continue to ${sections[section + 1].title}`}
                       <ArrowRight size={16} />
                     </button>
                   </div>
@@ -1196,31 +1316,31 @@ export default function EmployeeOnboardingPreview({
                 required details entered
               </div>
               <ul>
-                {required.map((f) => (
-                  <li key={f.key}>
-                    <span
-                      className={
-                        values[f.key]?.trim()
-                          ? styles.checked
-                          : styles.unchecked
-                      }
-                    >
-                      {values[f.key]?.trim() ? <Check size={11} /> : ""}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        go(
-                          sections.findIndex((s) =>
-                            s.fields.some((field) => field.key === f.key),
-                          ),
-                        )
-                      }
-                    >
-                      {f.label}
-                    </button>
-                  </li>
-                ))}
+                {required.map((f) => {
+                  const index = sections.findIndex((s) =>
+                    s.fields.some((field) => field.key === f.key),
+                  );
+                  return (
+                    <li key={f.key}>
+                      <span
+                        className={
+                          values[f.key]?.trim()
+                            ? styles.checked
+                            : styles.unchecked
+                        }
+                      >
+                        {values[f.key]?.trim() ? <Check size={11} /> : ""}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={index > limit}
+                        onClick={() => go(index)}
+                      >
+                        {f.label}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
               <div className={styles.summaryRule} />
               <div className={styles.summaryStat}>

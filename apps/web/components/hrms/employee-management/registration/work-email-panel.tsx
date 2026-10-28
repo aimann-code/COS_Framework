@@ -10,12 +10,16 @@ export default function WorkEmailPanel({
   setValues,
   disabled,
   ensureSaved,
+  existingError,
+  onExistingChange,
 }: {
   draftId: string;
   values: Record<string, string>;
   setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   disabled: boolean;
   ensureSaved?: () => Promise<string>;
+  existingError?: string;
+  onExistingChange?: (value: string) => void;
 }) {
   const mode = values.work_email_mode || "generate";
   const [preview, setPreview] = useState<WorkEmailPreview | null>(null);
@@ -101,18 +105,30 @@ export default function WorkEmailPanel({
         <label>
           Existing work email
           <input
+            id="onboarding-work_email_existing"
             type="email"
             autoComplete="off"
             maxLength={254}
             value={values.work_email_existing ?? ""}
+            aria-invalid={!!existingError}
+            aria-describedby={
+              existingError ? "onboarding-work_email_existing-error" : undefined
+            }
             onChange={(e) =>
-              setValues((v) => ({
-                ...v,
-                work_email_existing: e.target.value,
-              }))
+              onExistingChange
+                ? onExistingChange(e.target.value)
+                : setValues((v) => ({
+                    ...v,
+                    work_email_existing: e.target.value,
+                  }))
             }
             disabled={disabled}
           />
+          {existingError && (
+            <small id="onboarding-work_email_existing-error" role="alert">
+              {existingError}
+            </small>
+          )}
         </label>
       ) : (
         <div className={styles.reviewGrid}>

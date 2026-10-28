@@ -111,6 +111,29 @@ public class COSRequestRepository {
         .list();
   }
 
+  public boolean configurationWaitingForSomeoneElse(String scope, String actor) {
+    Long count =
+        jdbc.sql(
+                "SELECT COUNT(*) FROM integration.request WHERE scope_id=:scope AND"
+                    + " actor_id<>:actor AND operation='CONFIGURATION' AND"
+                    + " status='PENDING_APPROVAL'")
+            .param("scope", scope)
+            .param("actor", actor)
+            .query(Long.class)
+            .single();
+    return count != null && count > 0;
+  }
+
+  public List<Request> pendingConfiguration(String scope, String actor) {
+    return jdbc.sql(
+            "SELECT * FROM integration.request WHERE scope_id=:scope AND actor_id=:actor AND"
+                + " operation='CONFIGURATION' AND status='PENDING_APPROVAL' ORDER BY request_id")
+        .param("scope", scope)
+        .param("actor", actor)
+        .query(mapper)
+        .list();
+  }
+
   public List<Request> listConfiguration(
       String scope, String actor, boolean admin, UUID after, int limit) {
     return jdbc.sql(

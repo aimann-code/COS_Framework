@@ -10,6 +10,7 @@ import DocumentLinks from "./documents/profile-document-links";
 import ProfileDetails from "./details/profile-details";
 import ProfileDiff from "./details/profile-diff";
 import FormConfiguration from "./form-configuration";
+import CompanyApprovals from "./company-approvals";
 import EmployeeAccessCard from "./employee-access-card";
 import type { PeopleAction, ScreenData } from "./types";
 import styles from "./employee-onboarding-preview.module.css";
@@ -382,6 +383,16 @@ export default function PeopleScreenBody({
             </p>
           )}
         </>
+      )}
+      {path === "/people/companies" && data.companyCatalog && (
+        <CompanyApprovals
+          catalog={data.companyCatalog}
+          requests={data.companyRequests ?? []}
+          busy={busy}
+          run={action}
+          onNotice={setNotice}
+          onReload={refresh}
+        />
       )}
       {path === "/people/configuration" && data.config && (
         <FormConfiguration

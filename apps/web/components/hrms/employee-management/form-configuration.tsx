@@ -2,11 +2,34 @@
 
 import { useRef, useState } from "react";
 import { api } from "../../../lib/shared/cos-api";
-import type { Configuration } from "../../../lib/shared/cos-api";
+import type {
+  Configuration,
+  ConfigurationPlacement,
+} from "../../../lib/shared/cos-api";
 import type { FieldDefinition } from "../../../lib/shared/cos-domain";
 import { randomId } from "../../../lib/shared/random-id";
 import type { ConfigRequest, PeopleAction } from "./types";
+import { draftSections } from "../../../lib/hrms/employee-management/employee-onboarding-draft";
+import ConfigurationApprovals from "./configuration-approvals";
 import styles from "./employee-onboarding-preview.module.css";
+
+const sectionTitle = (id?: string) =>
+  draftSections.find((section) => section.id === id)?.title ??
+  (id === "company" || !id || id === "additional" ? "Company fields" : id);
+
+const sensitiveLocked = (id: string) =>
+  id === "pan_number" || id === "aadhaar_number";
+
+function Placement({ placement }: { placement?: ConfigurationPlacement }) {
+  if (!placement) return null;
+  return (
+    <p className={styles.privateNote}>
+      Company {placement.company} ({placement.company_id}). Suite{" "}
+      {placement.suite}. Engine {placement.engine}. Module {placement.module}.
+      Component {placement.component} ({placement.component_id}).
+    </p>
+  );
+}
 
 export default function FormConfiguration({
   config,
@@ -27,16 +50,36 @@ export default function FormConfiguration({
 }) {
   const [fields, setFields] = useState(() => structuredClone(config.fields));
   const [label, setLabel] = useState("");
+  const [section, setSection] = useState(draftSections[0]?.id ?? "basic");
   const [type, setType] = useState<FieldDefinition["type"]>("text");
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const keys = useRef(new Map<string, string>());
   const unchanged = JSON.stringify(fields) === JSON.stringify(config.fields);
+  const blankLabel = fields.some((f) => !f.label.trim());
+  const waiting = requests.some((r) => r.status === "PENDING_APPROVAL");
+  const updateField = (id: string, patch: Partial<FieldDefinition>) =>
+    setFields((old) =>
+      old.map((field) => (field.id === id ? { ...field, ...patch } : field)),
+    );
+  if (admin) {
+    return (
+      <ConfigurationApprovals
+        config={config}
+        requests={requests}
+        busy={busy}
+        run={run}
+        onNotice={onNotice}
+        onReload={onReload}
+      />
+    );
+  }
   return (
     <>
+      <Placement placement={config.placement} />
       <p className={styles.privateNote}>
-        Active configuration v{config.version}. New and changed additional
-        fields take effect only after admin approval. Core profile sections are
-        defined by Employee Management.
+        Active configuration v{config.version}. Change an existing field or add
+        one to a profile section such as Basic details or Compliance. The field
+        type stays as it is. Changes take effect only after admin approval.
       </p>
       {!admin && (
         <section className={styles.profileCard}>
@@ -46,6 +89,7 @@ export default function FormConfiguration({
               <thead>
                 <tr>
                   <th>Field</th>
+                  <th>Section</th>
                   <th>Type</th>
                   <th>Enabled</th>
                   <th>Required</th>
@@ -55,36 +99,62 @@ export default function FormConfiguration({
               <tbody>
                 {fields.map((f) => (
                   <tr key={f.id}>
-                    <td>{f.label}</td>
-                    <td>{f.type}</td>
+                    <td>
+                      <input
+                        aria-label={`Label for ${f.id}`}
+                        maxLength={80}
+                        value={f.label}
+                        disabled={busy}
+                        onChange={(e) =>
+                          updateField(f.id, { label: e.target.value })
+                        }
+                      />
+                      <span className={styles.portalFieldId}>{f.id}</span>
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`Section for ${f.label || f.id}`}
+                        value={
+                          draftSections.some(
+                            (section) => section.id === f.group_key,
+                          )
+                            ? f.group_key
+                            : "additional"
+                        }
+                        disabled={busy}
+                        onChange={(e) =>
+                          updateField(f.id, { group_key: e.target.value })
+                        }
+                      >
+                        {draftSections.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.title}
+                          </option>
+                        ))}
+                        <option value="additional">Company fields</option>
+                      </select>
+                    </td>
+                    <td title="The field type stays fixed after the field is created.">
+                      {f.type}
+                    </td>
                     {(["visible", "required", "sensitive"] as const).map(
                       (key) => (
                         <td key={key}>
                           <input
                             type="checkbox"
-                            aria-label={`${key} ${f.label}`}
+                            aria-label={`${key} ${f.label || f.id}`}
                             checked={f[key]}
                             disabled={
                               busy ||
-                              ["dob", "pan_number", "aadhaar_number"].includes(
-                                f.id,
-                              )
+                              (key === "sensitive" && sensitiveLocked(f.id))
                             }
                             onChange={(e) =>
-                              setFields((old) =>
-                                old.map((x) =>
-                                  x.id === f.id
-                                    ? {
-                                        ...x,
-                                        [key]: e.target.checked,
-                                        ...(key === "visible" &&
-                                        !e.target.checked
-                                          ? { required: false }
-                                          : {}),
-                                      }
-                                    : x,
-                                ),
-                              )
+                              updateField(f.id, {
+                                [key]: e.target.checked,
+                                ...(key === "visible" && !e.target.checked
+                                  ? { required: false }
+                                  : {}),
+                              })
                             }
                           />
                         </td>
@@ -103,6 +173,19 @@ export default function FormConfiguration({
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
               />
+            </label>
+            <label>
+              Profile section
+              <select
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+              >
+                {draftSections.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Field type
@@ -146,7 +229,7 @@ export default function FormConfiguration({
                     write_roles: ["REGISTRAR", "EMPLOYEE"],
                     printable: false,
                     display_order: f.length,
-                    group_key: "company",
+                    group_key: section,
                     max_length: 500,
                   },
                 ]);
@@ -156,21 +239,43 @@ export default function FormConfiguration({
               Add field
             </button>
           </div>
+          {waiting && (
+            <p role="status">
+              A proposal is already waiting. Submitting again replaces it with
+              this field list, including the new field.
+            </p>
+          )}
           <button
             type="button"
             className={styles.primary}
-            disabled={
-              busy ||
-              unchanged ||
-              requests.some((r) => r.status === "PENDING_APPROVAL")
-            }
+            disabled={busy || unchanged || blankLabel}
             onClick={() =>
               void run(async () => {
                 const body = JSON.stringify({
                   component_id: "EMP_Reg",
                   operation: "CONFIGURATION",
                   configuration_version: config.version,
-                  payload: { fields },
+                  payload: {
+                    fields: fields.map((f) => ({
+                      id: f.id,
+                      ...(f.field_id ? { field_id: f.field_id } : {}),
+                      label: f.label,
+                      type: f.type,
+                      required: f.required,
+                      visible: f.visible,
+                      sensitive: f.sensitive,
+                      read_roles: f.read_roles ?? [
+                        "ADMIN",
+                        "REGISTRAR",
+                        "VIEWER",
+                      ],
+                      write_roles: f.write_roles ?? ["REGISTRAR"],
+                      printable: f.printable ?? false,
+                      display_order: f.display_order ?? 0,
+                      group_key: f.group_key || "additional",
+                      max_length: f.max_length ?? 500,
+                    })),
+                  },
                 });
                 if (!keys.current.has(body))
                   keys.current.set(body, randomId());
@@ -180,13 +285,17 @@ export default function FormConfiguration({
                   body,
                 });
                 onNotice(
-                  "Configuration proposal submitted for admin approval.",
+                  waiting
+                    ? "The waiting proposal was replaced with this field list."
+                    : "Configuration proposal submitted for admin approval.",
                 );
                 onReload();
               })
             }
           >
-            Submit configuration proposal
+            {waiting
+              ? "Replace configuration proposal"
+              : "Submit configuration proposal"}
           </button>
         </section>
       )}
@@ -195,6 +304,7 @@ export default function FormConfiguration({
         requests.map((r) => (
           <section className={styles.profileCard} key={r.request_id}>
             <h3>
+              {config.placement?.module ?? "Employee Management"} ·
               Configuration v{r.configuration_version} ·{" "}
               {r.status.replaceAll("_", " ")}
             </h3>
@@ -202,7 +312,8 @@ export default function FormConfiguration({
             <ul>
               {r.payload.fields?.map((f) => (
                 <li key={f.id}>
-                  {f.label}: {f.type} · {f.visible ? "enabled" : "disabled"} ·{" "}
+                  {f.label}: {sectionTitle(f.group_key)} · {f.type} ·{" "}
+                  {f.visible ? "enabled" : "disabled"} ·{" "}
                   {f.required ? "required" : "optional"} ·{" "}
                   {f.sensitive ? "sensitive" : "standard"}
                 </li>

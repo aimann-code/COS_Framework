@@ -11,6 +11,21 @@ import tools.jackson.databind.JsonNode;
 
 @Service
 public class COSMetadataService {
+  static final Set<String> PROFILE_SECTIONS =
+      Set.of(
+          "basic",
+          "employment",
+          "salary",
+          "banking",
+          "compliance",
+          "addresses",
+          "contacts",
+          "family",
+          "education",
+          "uniform",
+          "additional",
+          "company");
+
   private final COSMetadataRepository repository;
   private final COSJson json;
 
@@ -30,27 +45,35 @@ public class COSMetadataService {
                         || actor.permitted(f.read_roles())
                         || actor.permitted(f.write_roles()))
             .toList();
-    return Map.of(
-        "component_id",
-        "EMP_Reg",
-        "version",
-        m.version(),
-        "fields",
-        permitted,
-        "allowed_modes",
-        m.allowed_modes(),
-        "default_mode",
-        m.default_mode(),
-        "controlled_values",
-        repository.choices(actor.scope()),
-        "bulk_upload_enabled",
-        actor.roles().contains("REGISTRAR"),
-        "sheet_sync_enabled",
-        false,
-        "max_batch_rows",
-        500,
-        "batch_acceptance_policy",
-        "ALL_OR_NOTHING");
+    var body = new LinkedHashMap<String, Object>();
+    body.put("component_id", "EMP_Reg");
+    body.put("version", m.version());
+    body.put("fields", permitted);
+    body.put("allowed_modes", m.allowed_modes());
+    body.put("default_mode", m.default_mode());
+    body.put("controlled_values", repository.choices(actor.scope()));
+    body.put("bulk_upload_enabled", actor.roles().contains("REGISTRAR"));
+    body.put("sheet_sync_enabled", false);
+    body.put("max_batch_rows", 500);
+    body.put("batch_acceptance_policy", "ALL_OR_NOTHING");
+    body.put(
+        "placement",
+        Map.of(
+            "company_id",
+            actor.scope(),
+            "company",
+            repository.scopeLabel(actor.scope()),
+            "suite",
+            "Enterprise Management",
+            "engine",
+            "HRMS",
+            "module",
+            "Employee Management",
+            "component_id",
+            "EMP_Reg",
+            "component",
+            "Employee registration"));
+    return body;
   }
 
   public COSMetadataRepository.Config current(String scope, int version) {
@@ -128,6 +151,13 @@ public class COSMetadataService {
               ? UUID.nameUUIDFromBytes(
                   (scope + ":" + f.id()).getBytes(java.nio.charset.StandardCharsets.UTF_8))
               : UUID.fromString(old.field_id());
+      String section =
+          f.group_key() == null || f.group_key().isBlank() ? "additional" : f.group_key();
+      if (!PROFILE_SECTIONS.contains(section))
+        throw new COSError(
+            422,
+            "FIELD_SECTION_INVALID",
+            "Choose a profile section such as basic details or compliance.");
       fields.add(
           new Field(
               f.id(),
@@ -141,7 +171,7 @@ public class COSMetadataService {
               List.copyOf(writes),
               f.printable(),
               f.display_order(),
-              f.group_key() == null ? "additional" : f.group_key(),
+              section,
               f.max_length() == null ? 500 : Math.clamp(f.max_length(), 1, 2048)));
     }
     // Retiring means setting visible=false, so historical field definitions and references survive.

@@ -2,6 +2,7 @@ package com.cos.shared.config;
 
 import java.util.Arrays;
 import java.util.List;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -55,13 +56,11 @@ public class COSSecurityConfig {
     return username -> {
       String canonical = username.strip().toLowerCase(java.util.Locale.ROOT);
       if (bootstrap.userExists(canonical)) return bootstrap.loadUserByUsername(canonical);
-      var account =
-          accounts
-              .find(p.getScopeId(), canonical)
-              .orElseThrow(
-                  () ->
-                      new org.springframework.security.core.userdetails.UsernameNotFoundException(
-                          "Invalid credentials"));
+      var matches = accounts.findByEmail(canonical);
+      if (matches.size() != 1)
+        throw new org.springframework.security.core.userdetails.UsernameNotFoundException(
+            "Invalid credentials");
+      var account = matches.getFirst();
       return User.withUsername(account.email())
           .password(account.password())
           .roles(account.role() == null ? "VIEWER" : account.role())
@@ -115,7 +114,8 @@ public class COSSecurityConfig {
           CorsConfigurationSource source,
       com.cos.shared.security.COSJwtFilter jwtFilter,
       com.cos.shared.security.COSJwtService jwt,
-      COSProperties properties)
+      COSProperties properties,
+      com.cos.shared.account.COSAccountRepository accounts)
       throws Exception {
     http.addFilterBefore(
             new com.cos.shared.security.COSAuthThrottle(),
@@ -144,6 +144,10 @@ public class COSSecurityConfig {
                         "/api/v1/cos/auth/sign-up",
                         "/api/v1/cos/auth/token")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/cos/company-requests/catalog")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/v1/cos/company-requests")
+                    .permitAll()
                     .anyRequest()
                     .authenticated())
         .formLogin(
@@ -151,7 +155,12 @@ public class COSSecurityConfig {
                 c.loginProcessingUrl("/api/v1/cos/login")
                     .successHandler(
                         (req, res, auth) -> {
-                          jwt.attach(req, res, auth, properties.getScopeId());
+                          var matches = accounts.findByEmail(auth.getName().toLowerCase(java.util.Locale.ROOT));
+                          String scope =
+                              matches.size() == 1
+                                  ? matches.getFirst().scope()
+                                  : properties.getScopeId();
+                          jwt.attach(req, res, auth, scope);
                           res.setStatus(204);
                         })
                     .failureHandler((req, res, e) -> problem(res, 401, "INVALID_CREDENTIALS")))

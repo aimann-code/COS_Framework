@@ -15,12 +15,22 @@ export type Session = {
   can_print: boolean;
 };
 type Choice = { id: string; code: string; label: string; category: string };
+export type ConfigurationPlacement = {
+  company_id: string;
+  company: string;
+  suite: string;
+  engine: string;
+  module: string;
+  component_id: string;
+  component: string;
+};
 export type Configuration = {
   version: number;
   fields: FieldDefinition[];
   allowed_modes: string[];
   default_mode: string;
   controlled_values: Choice[];
+  placement?: ConfigurationPlacement;
 };
 type ApiPage<T> = { items: T[]; next_cursor: string | null };
 type ApiEmployee = Omit<Employee, "empid_entry_mode">;

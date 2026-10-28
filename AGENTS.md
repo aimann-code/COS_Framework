@@ -1,5 +1,12 @@
 # COS_Framework project guidance
 
+## Development practice
+
+Accepted on 28-Oct-2026: before changing this project, read and follow the relevant
+ECC skill for the work. Use the Java, frontend, error-handling, and coding-standards
+skills for HRMS changes, and the narrower ECC skill when one matches the task more
+closely. A skill does not override an accepted project rule in this file.
+
 ## Standards and decision traceability
 
 The user designated this shared-drive location for project standards, structure,

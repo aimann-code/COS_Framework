@@ -15,6 +15,7 @@ export function people_path_valid(path: string) {
     path === "/people/requests" ||
     path === "/people/accounts" ||
     path === "/people/configuration" ||
+    path === "/people/companies" ||
     path === "/people/leave" ||
     path === "/people/leave/apply" ||
     path === "/people/leave/policies" ||
@@ -49,6 +50,8 @@ export function people_access_message(path: string, roles: string[]) {
     return "Only HR can activate employee accounts.";
   if (path === "/people/configuration" && !hr && !admin)
     return "HR or company administrator access is required.";
+  if (path === "/people/companies" && !admin)
+    return "Only the platform administrator can review company requests.";
   if (
     (path === "/people/leave" ||
       path === "/people/leave/apply" ||
@@ -93,6 +96,9 @@ export function people_nav(roles: string[]): PeopleNavItem[] {
           { url: "/people/leave", label: "My leave" },
         ]
       : []),
+    ...(admin
+      ? [{ url: "/people/companies", label: "Company requests" }]
+      : []),
     ...(hr || admin
       ? [
           {
@@ -118,6 +124,7 @@ export function people_title(
   if (path === "/people/requests") return "My update requests";
   if (path.startsWith("/people/requests/")) return "My update request";
   if (path === "/people/accounts") return "Employee account activation";
+  if (path === "/people/companies") return "Company requests";
   if (path === "/people/configuration")
     return admin ? "Configuration approvals" : "Form configuration";
   if (path.startsWith("/people/reviews/")) return "Review employee update";

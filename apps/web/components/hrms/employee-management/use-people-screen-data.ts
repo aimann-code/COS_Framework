@@ -9,7 +9,13 @@ import {
   people_auto_redirect,
   people_roles_ok,
 } from "../../../lib/hrms/employee-management/people-routes";
-import type { Account, ConfigRequest, ScreenData } from "./types";
+import type {
+  Account,
+  CompanyCatalog,
+  CompanyRequest,
+  ConfigRequest,
+  ScreenData,
+} from "./types";
 
 export function usePeopleScreenData(
   path: string,
@@ -86,6 +92,13 @@ export function usePeopleScreenData(
           next.reviews = await onboarding.drafts(true);
         } else if (path === "/people/accounts") {
           next.accounts = await api<Account[]>("/accounts/pending");
+        } else if (path === "/people/companies") {
+          const [catalog, requests] = await Promise.all([
+            api<CompanyCatalog>("/company-requests/catalog"),
+            api<CompanyRequest[]>("/company-requests"),
+          ]);
+          next.companyCatalog = catalog;
+          next.companyRequests = requests;
         } else if (path === "/people/configuration") {
           const [configuration, requests] = await Promise.all([
             api<Configuration>("/components/EMP_Reg/configuration"),

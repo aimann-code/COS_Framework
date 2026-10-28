@@ -28,6 +28,14 @@ public class COSMetadataRepository {
         .isEmpty()) throw COSError.forbidden();
   }
 
+  public String scopeLabel(String scope) {
+    return jdbc.sql("SELECT label FROM meta.scope WHERE scope_id=:scope")
+        .param("scope", scope)
+        .query(String.class)
+        .optional()
+        .orElse(scope);
+  }
+
   public boolean scopeExists(String scope) {
     return jdbc.sql("SELECT count(*) FROM meta.scope WHERE scope_id=:scope")
             .param("scope", scope)
@@ -96,15 +104,17 @@ public class COSMetadataRepository {
     for (Field f : metadata.fields()) {
       UUID field_id = UUID.fromString(f.field_id());
       jdbc.sql(
-              "INSERT INTO"
-                  + " meta.field_definition(field_id,readable_id,scope_id,technical_name,data_type)"
-                  + " VALUES(:id,:readable,:scope,:name,:type) ON CONFLICT(scope_id,technical_name)"
-                  + " DO NOTHING")
+              "INSERT INTO meta.field_definition(field_id,readable_id,scope_id,technical_name,"
+                  + "data_type,label,sensitive) VALUES(:id,:readable,:scope,:name,:type,:label,"
+                  + ":sensitive) ON CONFLICT(scope_id,technical_name) DO UPDATE SET sensitive ="
+                  + " meta.field_definition.sensitive OR EXCLUDED.sensitive")
           .param("id", field_id)
           .param("readable", "LOCAL-FLD-" + field_id)
           .param("scope", scope)
           .param("name", f.id())
           .param("type", f.type())
+          .param("label", f.label())
+          .param("sensitive", f.sensitive())
           .update();
       jdbc.sql(
               "INSERT INTO meta.component_field(config_id,field_id,required,display_order,policy)"

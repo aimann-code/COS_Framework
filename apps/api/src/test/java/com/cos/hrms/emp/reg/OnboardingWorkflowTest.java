@@ -78,6 +78,7 @@ class OnboardingWorkflowTest {
   @Autowired JdbcClient jdbc;
   @Autowired COSJson json;
   @Autowired MockMvc mvc;
+  @Autowired CompanyAccess.CompanyAccessService companies;
   final COSActor hr = new COSActor("registrar", "TEST", Set.of("REGISTRAR"));
   final COSActor admin = new COSActor("admin", "TEST", Set.of("ADMIN"));
   final COSActor otherHR = new COSActor("other-hr", "TEST", Set.of("REGISTRAR"));
@@ -555,6 +556,108 @@ class OnboardingWorkflowTest {
   }
 
   @Test
+  void hrCanProposeAnExtraFieldOnAProfileSection() {
+    var fields = new ArrayList<Object>();
+    fields.addAll(configs.active("TEST").metadata().fields());
+    fields.add(extraField("payroll"));
+    assertThatThrownBy(
+            () ->
+                configuration.submit(
+                    hr,
+                    new COSContracts.CommonRequest(
+                        "EMP_Reg",
+                        "CONFIGURATION",
+                        configs.active("TEST").metadata().version(),
+                        json.tree(Map.of("fields", fields))),
+                    UUID.randomUUID().toString()))
+        .isInstanceOf(COSError.class)
+        .extracting("code")
+        .isEqualTo("FIELD_SECTION_INVALID");
+    fields.set(fields.size() - 1, extraField("compliance"));
+    var request =
+        configuration.submit(
+            hr,
+            new COSContracts.CommonRequest(
+                "EMP_Reg",
+                "CONFIGURATION",
+                configs.active("TEST").metadata().version(),
+                json.tree(Map.of("fields", fields))),
+            UUID.randomUUID().toString());
+    assertThat(request.payload().toString()).contains("custom_bonus").contains("compliance");
+    configuration.decide(
+        admin,
+        UUID.fromString(request.request_id()),
+        new COSContracts.Approval(1, "REJECT", "Synthetic section proposal"));
+  }
+
+  @Test
+  void newerConfigurationProposalReplacesTheWaitingOne() {
+    var placement = metadata.configuration(hr).get("placement");
+    assertThat(placement).isInstanceOf(Map.class);
+    var origin = (Map<?, ?>) placement;
+    assertThat(origin.get("company_id")).isEqualTo("TEST");
+    assertThat(origin.get("suite")).isEqualTo("Enterprise Management");
+    assertThat(origin.get("engine")).isEqualTo("HRMS");
+    assertThat(origin.get("module")).isEqualTo("Employee Management");
+    assertThat(origin.get("component_id")).isEqualTo("EMP_Reg");
+    assertThat(origin.get("component")).isEqualTo("Employee registration");
+    assertThat(origin.get("company")).isNotNull();
+    var fields = new ArrayList<Object>();
+    fields.addAll(configs.active("TEST").metadata().fields());
+    fields.add(extraField("basic"));
+    var first =
+        configuration.submit(
+            hr,
+            new COSContracts.CommonRequest(
+                "EMP_Reg",
+                "CONFIGURATION",
+                configs.active("TEST").metadata().version(),
+                json.tree(Map.of("fields", fields))),
+            UUID.randomUUID().toString());
+    var revised = new ArrayList<Object>(fields);
+    var shift = new LinkedHashMap<String, Object>(extraField("basic"));
+    shift.put("id", "custom_shift_note");
+    shift.put("label", "Shift note");
+    shift.put("type", "text");
+    revised.add(shift);
+    var second =
+        configuration.submit(
+            hr,
+            new COSContracts.CommonRequest(
+                "EMP_Reg",
+                "CONFIGURATION",
+                configs.active("TEST").metadata().version(),
+                json.tree(Map.of("fields", revised))),
+            UUID.randomUUID().toString());
+    var replaced = configuration.get(hr, UUID.fromString(first.request_id()));
+    assertThat(replaced.status()).isEqualTo("REJECTED");
+    assertThat(replaced.remarks()).contains("Replaced");
+    assertThat(second.status()).isEqualTo("PENDING_APPROVAL");
+    assertThat(second.payload().toString()).contains("custom_shift_note").contains("basic");
+    configuration.decide(
+        admin,
+        UUID.fromString(second.request_id()),
+        new COSContracts.Approval(1, "REJECT", "Synthetic replacement proposal"));
+  }
+
+  private Map<String, Object> extraField(String section) {
+    var field = new LinkedHashMap<String, Object>();
+    field.put("id", "custom_bonus");
+    field.put("label", "Festival bonus");
+    field.put("type", "number");
+    field.put("required", false);
+    field.put("visible", true);
+    field.put("sensitive", false);
+    field.put("read_roles", List.of("ADMIN", "REGISTRAR", "EMPLOYEE"));
+    field.put("write_roles", List.of("REGISTRAR", "EMPLOYEE"));
+    field.put("printable", false);
+    field.put("display_order", 9);
+    field.put("group_key", section);
+    field.put("max_length", 500);
+    return field;
+  }
+
+  @Test
   void httpRequiresAuthenticationCsrfAndStrictProfileShape() throws Exception {
     mvc.perform(get("/api/v1/cos/onboarding/employees")).andExpect(status().isUnauthorized());
     mvc.perform(
@@ -753,5 +856,55 @@ class OnboardingWorkflowTest {
                       service.getDraft(hr, UUID.fromString(d.draft_id())).version()));
       assertThat(a.get().employee_id()).isEqualTo(b.get().employee_id());
     }
+  }
+
+  @Test
+  void approvedCompanyGetsItsOwnScope() {
+    Long before =
+        jdbc.sql("SELECT count(*) FROM people.employee WHERE scope_id='TEST'")
+            .query(Long.class)
+            .single();
+    var id =
+        companies.submit(
+            new CompanyAccess.Submit(
+                "North Kitchen",
+                "north.kitchen@example.test",
+                "integration-test-password",
+                List.of("EMPLOYEES", "LEAVE")));
+    assertThatThrownBy(
+            () ->
+                companies.decide(
+                    hr, id, new CompanyAccess.Decision("APPROVE", List.of("EMPLOYEES"), "")))
+        .isInstanceOf(COSError.class);
+    companies.decide(admin, id, new CompanyAccess.Decision("APPROVE", List.of("EMPLOYEES"), ""));
+    assertThat(
+            jdbc.sql("SELECT count(*) FROM people.employee WHERE scope_id='TEST'")
+                .query(Long.class)
+                .single())
+        .isEqualTo(before);
+    String scope =
+        jdbc.sql("SELECT scope_id FROM auth.account WHERE email='north.kitchen@example.test'")
+            .query(String.class)
+            .single();
+    assertThat(scope).startsWith("co_").isNotEqualTo("TEST");
+    assertThat(
+            jdbc.sql("SELECT role FROM auth.account WHERE email='north.kitchen@example.test'")
+                .query(String.class)
+                .single())
+        .isEqualTo("REGISTRAR");
+    assertThat(
+            jdbc.sql(
+                    "SELECT enabled FROM meta.module WHERE scope_id=:scope AND module_code='EMPLOYEES'")
+                .param("scope", scope)
+                .query(Boolean.class)
+                .single())
+        .isTrue();
+    assertThat(
+            jdbc.sql(
+                    "SELECT enabled FROM meta.module WHERE scope_id=:scope AND module_code='LEAVE'")
+                .param("scope", scope)
+                .query(Boolean.class)
+                .single())
+        .isFalse();
   }
 }
