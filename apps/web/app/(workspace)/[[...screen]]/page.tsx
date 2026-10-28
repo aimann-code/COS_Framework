@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { workspace_route } from "../../../lib/cos-routes";
+import { workspace_route } from "../../../lib/shared/cos-routes";
 export default async function WorkspacePage({
   params,
 }: {

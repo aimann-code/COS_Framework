@@ -1,5 +1,5 @@
-import { api } from "../../cos-api";
-import type { FieldDefinition } from "../../cos-domain";
+import { api } from "../../shared/cos-api";
+import type { FieldDefinition } from "../../shared/cos-domain";
 export type ProfileEntry = { id: string; values: Record<string, string> };
 export type ProfileData = {
   values: Record<string, string>;

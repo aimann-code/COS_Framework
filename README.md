@@ -19,22 +19,32 @@ apps/web/
   app/people/           Current HR, employee and configuration routes
   app/sign-in/          Sign-in entry point
   app/sign-up/          Employee access request
-  components/           Workspace shell, profile form, directory and reviews
-  lib/                  Typed API adapters, routes and form definitions
-apps/api/src/main/java/com/cos/hrms/
-  onboarding/           Profiles, drafts, documents, HR edits and employee reviews
-  account/              Local credentials and access requests
-  metadata/             Company configuration and field policies
-  request/              Configuration proposal, approval and execution
-  security/             Authenticated actors, roles and company scope
-  shared/               Encryption, audit, JSON and errors
-  config/               Security settings and local database bootstrap
+  components/shared/    COS framework UI: sign-in, workspace gateway, common controls
+  components/hrms/      HRMS engine: employee-management, leave-management
+  lib/shared/           COS framework API client, routes and domain types
+  lib/hrms/             HRMS engine API adapters, routes and form definitions
+apps/api/src/main/java/com/cos/
+  COSApplication.java   Spring Boot entry point (scans com.cos.shared and com.cos.hrms)
+  shared/               COS framework services used by every component
+    component/          COSComponent contract that components implement to plug in
+    account/            Local credentials and access requests
+    config/             Properties, security settings and local bootstrap
+    metadata/           Company configuration, field policies and module catalog
+    req/                Configuration proposal, approval and execution worker
+    security/           Authenticated actors, roles, company scope and JWT
+    web/                Filters, error handling and shared endpoints
+    (root)              Encryption, audit, JSON and errors
+  hrms/                 HRMS engine (Enterprise Management suite)
+    emp/                Employee Management module: directory and configuration workflow
+      reg/              Employee Registration component: profiles, drafts, HR edits, work email
+      doc/              Employee Documents component: encrypted photos and image checks
+    leave/              Leave Management module: policies, requests and decisions
 apps/api/src/main/resources/db/migration/   Additive schema migrations
 tests/                  Connected, preview and historical demo browser checks
 scripts/                Local API bootstrap and Java formatting
 ```
 
-The backend is a feature-organized monolith with controller, service and repository layers. Core employee rules are explicit Java behavior; approved metadata supplies additional company fields. This is not a fully generic component engine where arbitrary modules can be added without implementation work.
+The layout follows the COS_Governance hierarchy (platform > suite > engine > module > component) and frozen shortcodes (`emp`, `reg`, `doc`, `req`). The backend is a monolith with controller, service and repository layers. Shared COS services live in `com.cos.shared`; each HRMS module registers its navigation entries and scope defaults by implementing `COSComponent`, which the framework discovers at startup. Core employee rules are explicit Java behavior; approved metadata supplies additional company fields. Components are still compiled into the application. This is not a runtime plugin engine where arbitrary modules can be added without implementation work.
 
 ## Run locally
 

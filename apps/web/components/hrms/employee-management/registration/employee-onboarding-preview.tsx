@@ -32,7 +32,7 @@ import {
   type DraftField,
 } from "../../../../lib/hrms/employee-management/employee-onboarding-draft";
 import styles from "../employee-onboarding-preview.module.css";
-import { ApiError, API_URL } from "../../../../lib/cos-api";
+import { ApiError, API_URL } from "../../../../lib/shared/cos-api";
 import {
   onboarding,
   type ProfileDraft,
@@ -40,7 +40,7 @@ import {
   type EmployeeProfile,
   type OnboardingSchema,
 } from "../../../../lib/hrms/employee-management/onboarding-api";
-import { randomId } from "../../../../lib/random-id";
+import { randomId } from "../../../../lib/shared/random-id";
 import WorkEmailPanel from "./work-email-panel";
 export type LiveRegistration = {
   schema: OnboardingSchema;

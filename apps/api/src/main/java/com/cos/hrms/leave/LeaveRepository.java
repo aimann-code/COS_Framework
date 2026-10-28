@@ -2,8 +2,8 @@ package com.cos.hrms.leave;
 
 import static com.cos.hrms.leave.LeaveContracts.*;
 
-import com.cos.hrms.shared.COSError;
-import com.cos.hrms.shared.COSJson;
+import com.cos.shared.COSError;
+import com.cos.shared.COSJson;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;

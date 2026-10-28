@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { api } from "../../../lib/cos-api";
-import type { Configuration } from "../../../lib/cos-api";
-import type { FieldDefinition } from "../../../lib/cos-domain";
-import { randomId } from "../../../lib/random-id";
+import { api } from "../../../lib/shared/cos-api";
+import type { Configuration } from "../../../lib/shared/cos-api";
+import type { FieldDefinition } from "../../../lib/shared/cos-domain";
+import { randomId } from "../../../lib/shared/random-id";
 import type { ConfigRequest, PeopleAction } from "./types";
 import styles from "./employee-onboarding-preview.module.css";
 

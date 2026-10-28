@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "../../../lib/cos-api";
+import { api } from "../../../lib/shared/cos-api";
 import type { Account, PeopleAction } from "./types";
 import styles from "./employee-onboarding-preview.module.css";
 

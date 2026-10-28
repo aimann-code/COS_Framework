@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Plus, ShieldCheck, Users } from "lucide-react";
 import { onboarding } from "../../../lib/hrms/employee-management/onboarding-api";
-import { randomId } from "../../../lib/random-id";
+import { randomId } from "../../../lib/shared/random-id";
 import DocumentLinks from "./documents/profile-document-links";
 import ProfileDetails from "./details/profile-details";
 import ProfileDiff from "./details/profile-diff";

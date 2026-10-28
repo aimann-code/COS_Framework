@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
-import { api, logout, type Session } from "../../../lib/cos-api";
+import { api, logout, type Session } from "../../../lib/shared/cos-api";
 import EmployeeOnboardingPreview from "./registration/employee-onboarding-preview";
 import LeaveDesk from "../leave-management/leave-desk";
 import PeopleShell from "./people-shell";

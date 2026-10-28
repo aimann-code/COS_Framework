@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiError, type Configuration, type Session } from "../../../lib/cos-api";
+import { api, ApiError, type Configuration, type Session } from "../../../lib/shared/cos-api";
 import { onboarding } from "../../../lib/hrms/employee-management/onboarding-api";
 import {
   people_access_message,

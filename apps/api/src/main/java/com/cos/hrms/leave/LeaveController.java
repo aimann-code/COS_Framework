@@ -2,8 +2,8 @@ package com.cos.hrms.leave;
 
 import static com.cos.hrms.leave.LeaveContracts.*;
 
-import com.cos.hrms.config.COSProperties;
-import com.cos.hrms.security.COSActor;
+import com.cos.shared.config.COSProperties;
+import com.cos.shared.security.COSActor;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;

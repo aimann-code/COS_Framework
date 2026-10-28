@@ -1,5 +1,5 @@
 import { FileImage } from "lucide-react";
-import { API_URL } from "../../../../lib/cos-api";
+import { API_URL } from "../../../../lib/shared/cos-api";
 import type { ProfileDraft } from "../../../../lib/hrms/employee-management/onboarding-api";
 import { docNames } from "../types";
 import styles from "../employee-onboarding-preview.module.css";

@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, ApiError } from "../../../lib/cos-api";
+import { api, ApiError } from "../../../lib/shared/cos-api";
 import styles from "../employee-management/employee-onboarding-preview.module.css";
 
 type Policy = {

@@ -1,5 +1,5 @@
-import type { Configuration } from "../../../lib/cos-api";
-import type { FieldDefinition } from "../../../lib/cos-domain";
+import type { Configuration } from "../../../lib/shared/cos-api";
+import type { FieldDefinition } from "../../../lib/shared/cos-domain";
 import type {
   DraftSummary,
   EmployeeProfile,
