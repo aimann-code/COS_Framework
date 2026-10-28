@@ -75,12 +75,18 @@ export async function api<T>(
       headers,
       credentials: "include",
       cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
     });
-  } catch {
+  } catch (e) {
+    const timedOut =
+      e instanceof DOMException &&
+      (e.name === "TimeoutError" || e.name === "AbortError");
     throw new ApiError(
       0,
-      "API_UNREACHABLE",
-      "We can’t connect to your workspace right now. Please try again in a moment.",
+      timedOut ? "API_TIMEOUT" : "API_UNREACHABLE",
+      timedOut
+        ? "The workspace did not respond in time. Check that the API is running on the host PC and that Windows Firewall allows port 3000."
+        : "We can’t connect to your workspace right now. On another device, use the host PC’s Wi‑Fi address (npm run dev:lan) and allow Node/Java through the firewall.",
     );
   }
   if (!response.ok) {

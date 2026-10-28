@@ -10,17 +10,17 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@Profile({"local", "test"})
+@Profile("!oidc")
 @RequestMapping("/api/v1/cos")
 public class COSAccountController {
   private final COSAccountService accounts;
-  private final com.cos.hrms.onboarding.OnboardingAccountService onboarding;
+  private final com.cos.hrms.employee.registration.OnboardingAccountService onboarding;
   private final COSProperties properties;
 
   public COSAccountController(
       COSAccountService accounts,
       COSProperties properties,
-      com.cos.hrms.onboarding.OnboardingAccountService onboarding) {
+      com.cos.hrms.employee.registration.OnboardingAccountService onboarding) {
     this.onboarding = onboarding;
     this.accounts = accounts;
     this.properties = properties;
@@ -48,7 +48,7 @@ public class COSAccountController {
   public ResponseEntity<Void> review(
       Authentication authentication,
       @PathVariable UUID id,
-      @Valid @RequestBody com.cos.hrms.onboarding.OnboardingAccountService.Review input) {
+      @Valid @RequestBody com.cos.hrms.employee.registration.OnboardingAccountService.Review input) {
     onboarding.review(COSActor.from(authentication, properties), id, input);
     return ResponseEntity.noContent().build();
   }

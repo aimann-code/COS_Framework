@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile({"local", "test"})
+@Profile("!oidc")
 public class COSAccountService {
   public record Signup(
       @NotBlank @Size(max = 100) String full_name,

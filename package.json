@@ -7,9 +7,12 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace apps/web",
+    "dev:lan": "pwsh -NoProfile -File scripts/dev-lan.ps1",
+    "network:url": "pwsh -NoProfile -File scripts/network-url.ps1",
     "build": "npm run build --workspace apps/web",
     "start": "npm run start --workspace apps/web",
     "typecheck": "npm run typecheck --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
     "test:e2e": "playwright test",
     "api:dev": "pwsh -NoProfile -File scripts/backend.ps1",
     "api:test": "pwsh -NoProfile -File scripts/backend.ps1 test",

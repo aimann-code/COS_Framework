@@ -33,8 +33,11 @@ spring:
     problemdetails:
       enabled: true
 cos:
+  mail:
+    domain: ${COS_MAIL_DOMAIN:example.mhl.test}
   encryption-key: ${COS_ENCRYPTION_KEY}
   fingerprint-key: ${COS_FINGERPRINT_KEY}
+  jwt-secret: ${COS_JWT_SECRET:}
   allowed-origins: ${COS_ALLOWED_ORIGINS:http://127.0.0.1:3000,http://127.0.0.1:3001,http://localhost:3000}
   scope-id: ${COS_SCOPE_ID}
   id-prefix: ${COS_ID_PREFIX}
@@ -46,11 +49,19 @@ spring:
   config:
     activate:
       on-profile: local
+  datasource:
+    url: ${COS_DATABASE_URL}
+    username: ${COS_DATABASE_USER}
+    password: ${COS_DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+server:
+  address: ${COS_BIND_ADDRESS:127.0.0.1}
+  port: 8080
 cos:
   scope-id: LOCAL_DEV
   id-prefix: LOCAL-
   manual-id-pattern: '[A-Za-z0-9][A-Za-z0-9_-]{0,63}'
-  data-directory: ${COS_DATA_DIRECTORY:../../.local/postgres}
   registrar-password: ${COS_REGISTRAR_PASSWORD}
   admin-password: ${COS_ADMIN_PASSWORD}
   reviewer-password: ${COS_REVIEWER_PASSWORD}
@@ -64,12 +75,26 @@ spring:
     url: ${COS_DATABASE_URL}
     username: ${COS_DATABASE_USER}
     password: ${COS_DATABASE_PASSWORD}
+cos:
+  cookie-secure: true
+  worker-enabled: false
+  registrar-password: ${COS_REGISTRAR_PASSWORD}
+  admin-password: ${COS_ADMIN_PASSWORD}
+  reviewer-password: ${COS_REVIEWER_PASSWORD}
+  viewer-password: ${COS_VIEWER_PASSWORD}
+server:
+  address: ${COS_BIND_ADDRESS:127.0.0.1}
+  servlet:
+    session:
+      cookie:
+        secure: true
+---
+spring:
+  config:
+    activate:
+      on-profile: oidc
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: ${COS_OIDC_ISSUER}
-cos:
-  worker-enabled: false
-server:
-  address: ${COS_BIND_ADDRESS:127.0.0.1}

@@ -15,6 +15,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -22,13 +24,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class COSSecurityConfig {
   @Bean
-  @Profile({"local", "test"})
+  @Profile("!oidc")
   org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
     return new BCryptPasswordEncoder();
   }
 
   @Bean
-  @Profile({"local", "test"})
+  @Profile("!oidc")
   UserDetailsService local_users(
       COSProperties p, com.cos.hrms.account.COSAccountRepository accounts) {
     var encoder = new BCryptPasswordEncoder();
@@ -76,25 +78,71 @@ public class COSSecurityConfig {
   }
 
   @Bean
-  @Profile({"local", "test"})
+  @Profile("!oidc")
+  org.springframework.security.authentication.AuthenticationManager authentication_manager(
+      org.springframework.security.config.annotation.authentication.configuration
+              .AuthenticationConfiguration
+          configuration)
+      throws Exception {
+    return configuration.getAuthenticationManager();
+  }
+
+  @Bean
+  @Profile("!oidc")
+  com.cos.hrms.security.COSJwtFilter jwt_filter(
+      com.cos.hrms.security.COSJwtService jwt,
+      UserDetailsService users,
+      COSProperties properties) {
+    return new com.cos.hrms.security.COSJwtFilter(jwt, users, properties);
+  }
+
+  @Bean
+  @Profile("!oidc")
+  org.springframework.boot.web.servlet.FilterRegistrationBean<com.cos.hrms.security.COSJwtFilter>
+      jwt_filter_registration(com.cos.hrms.security.COSJwtFilter filter) {
+    var registration =
+        new org.springframework.boot.web.servlet.FilterRegistrationBean<
+            com.cos.hrms.security.COSJwtFilter>(filter);
+    registration.setEnabled(false);
+    return registration;
+  }
+
+  @Bean
+  @Profile("!oidc")
   SecurityFilterChain local_security(
       HttpSecurity http,
       @org.springframework.beans.factory.annotation.Qualifier("cors_source")
-          CorsConfigurationSource source)
+          CorsConfigurationSource source,
+      com.cos.hrms.security.COSJwtFilter jwtFilter,
+      com.cos.hrms.security.COSJwtService jwt,
+      COSProperties properties)
       throws Exception {
     http.addFilterBefore(
             new com.cos.hrms.security.COSAuthThrottle(),
             org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
                 .class)
+        .addFilterBefore(
+            jwtFilter,
+            org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+                .class)
         .cors(c -> c.configurationSource(source))
-        .csrf(c -> c.csrfTokenRepository(new HttpSessionCsrfTokenRepository()))
+        .csrf(
+            c ->
+                c.csrfTokenRepository(new HttpSessionCsrfTokenRepository())
+                    .ignoringRequestMatchers(
+                        request -> {
+                          String header = request.getHeader("Authorization");
+                          return header != null && header.regionMatches(true, 0, "Bearer ", 0, 7);
+                        }))
+        .sessionManagement(s -> s.sessionFixation().changeSessionId())
         .authorizeHttpRequests(
             c ->
                 c.requestMatchers(
                         "/api/v1/cos/csrf",
                         "/api/v1/cos/session",
                         "/api/v1/cos/health",
-                        "/api/v1/cos/auth/sign-up")
+                        "/api/v1/cos/auth/sign-up",
+                        "/api/v1/cos/auth/token")
                     .permitAll()
                     .anyRequest()
                     .authenticated())
@@ -103,13 +151,20 @@ public class COSSecurityConfig {
                 c.loginProcessingUrl("/api/v1/cos/login")
                     .successHandler(
                         (req, res, auth) -> {
+                          jwt.attach(req, res, auth, properties.getScopeId());
                           res.setStatus(204);
                         })
                     .failureHandler((req, res, e) -> problem(res, 401, "INVALID_CREDENTIALS")))
         .logout(
             c ->
                 c.logoutUrl("/api/v1/cos/logout")
-                    .logoutSuccessHandler((req, res, auth) -> res.setStatus(204)))
+                    .logoutSuccessHandler(
+                        (req, res, auth) -> {
+                          jwt.revokePresented(req);
+                          jwt.clear(req, res);
+                          res.setStatus(204);
+                        })
+                    .deleteCookies("JSESSIONID"))
         .exceptionHandling(
             c ->
                 c.authenticationEntryPoint((req, res, e) -> problem(res, 401, "UNAUTHENTICATED"))
@@ -125,7 +180,7 @@ public class COSSecurityConfig {
   }
 
   @Bean
-  @Profile("!local & !test")
+  @Profile("oidc")
   SecurityFilterChain production_security(
       HttpSecurity http,
       @org.springframework.beans.factory.annotation.Qualifier("cors_source")
@@ -173,10 +228,23 @@ public class COSSecurityConfig {
   }
 
   @Bean
-  CorsConfigurationSource cors_source(COSProperties p) {
+  CorsConfigurationSource cors_source(COSProperties p, Environment environment) {
     var config = new CorsConfiguration();
-    config.setAllowedOrigins(
-        Arrays.stream(p.getAllowedOrigins().split(",")).map(String::trim).toList());
+    boolean lanDev =
+        environment.acceptsProfiles(Profiles.of("local"))
+            && "true".equalsIgnoreCase(System.getenv("COS_LAN_CORS"));
+    if (lanDev) {
+      config.setAllowedOriginPatterns(
+          List.of(
+              "http://127.0.0.1:*",
+              "http://localhost:*",
+              "http://192.168.*.*:*",
+              "http://10.*.*.*:*",
+              "http://172.*.*.*:*"));
+    } else {
+      config.setAllowedOrigins(
+          Arrays.stream(p.getAllowedOrigins().split(",")).map(String::trim).toList());
+    }
     config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
     config.setAllowedHeaders(
         List.of("Content-Type", "X-CSRF-TOKEN", "Idempotency-Key", "Authorization"));

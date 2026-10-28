@@ -1,6 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+// The in-browser demo workspace was removed; use npm run test:connected instead.
+test.describe.configure({ mode: "skip" });
+
 async function registration(page: Page, mode = "AUTO", name = "Test Employee") {
   await page
     .getByRole("button", { name: "Register employee", exact: true })

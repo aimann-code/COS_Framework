@@ -10,7 +10,15 @@ import org.springframework.context.annotation.Profile;
 @Profile("local")
 public class COSLocalSeed {
   @Bean
-  ApplicationRunner local_seed(COSMetadataService metadata, COSProperties p) {
-    return args -> metadata.seedLocal(p.getScopeId());
+  ApplicationRunner local_seed(
+      COSMetadataService metadata,
+      COSProperties p,
+      com.cos.hrms.metadata.ModuleCatalog.ModuleService modules,
+      com.cos.hrms.leave.LeaveService leave) {
+    return args -> {
+      metadata.seedLocal(p.getScopeId());
+      modules.ensure(p.getScopeId());
+      leave.ensure(p.getScopeId());
+    };
   }
 }

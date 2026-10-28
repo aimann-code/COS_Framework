@@ -1,4 +1,5 @@
 import type { Page } from "./cos-domain";
+import { people_path_valid } from "./hrms/employee-management/people-routes";
 export const workspace_paths: Record<Page, string> = {
   dashboard: "/dashboard",
   registration: "/employees/new",
@@ -41,11 +42,7 @@ export function workspace_route(path: string): WorkspaceRoute {
   return { ...base, valid: false };
 }
 export function safe_return_path(path: string | null) {
-  return path &&
-    (workspace_route(path).valid ||
-      /^\/people(?:\/(?:register|me|change|reviews|requests|accounts|configuration|directory)|\/(?:drafts|employees|reviews|requests)\/[0-9a-f-]{36})?$/.test(
-        path,
-      ))
+  return path && (workspace_route(path).valid || people_path_valid(path))
     ? path
     : "/";
 }

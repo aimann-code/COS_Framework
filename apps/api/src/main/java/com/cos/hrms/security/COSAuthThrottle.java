@@ -30,7 +30,7 @@ public class COSAuthThrottle extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
     String path = request.getServletPath();
-    boolean login = path.equals("/api/v1/cos/login");
+    boolean login = path.equals("/api/v1/cos/login") || path.equals("/api/v1/cos/auth/token");
     boolean signup = path.equals("/api/v1/cos/auth/sign-up");
     if (request.getMethod().equals("POST")
         && (login || signup)

@@ -8,7 +8,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 @Repository
-@Profile({"local", "test"})
+@Profile("!oidc")
 public class COSAccountRepository {
   public record Account(
       UUID id,

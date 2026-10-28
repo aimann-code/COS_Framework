@@ -4,9 +4,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("cos")
 public class COSProperties {
-  private String encryptionKey, fingerprintKey, scopeId, idPrefix, manualIdPattern, dataDirectory;
+  private String encryptionKey, fingerprintKey, jwtSecret, scopeId, idPrefix, manualIdPattern;
   private String registrarPassword, adminPassword, reviewerPassword, viewerPassword;
   private String allowedOrigins = "http://127.0.0.1:3000";
+  private boolean cookieSecure;
 
   public String getEncryptionKey() {
     return encryptionKey;
@@ -22,6 +23,14 @@ public class COSProperties {
 
   public void setFingerprintKey(String v) {
     fingerprintKey = v;
+  }
+
+  public String getJwtSecret() {
+    return jwtSecret;
+  }
+
+  public void setJwtSecret(String v) {
+    jwtSecret = v;
   }
 
   public String getScopeId() {
@@ -46,14 +55,6 @@ public class COSProperties {
 
   public void setManualIdPattern(String v) {
     manualIdPattern = v;
-  }
-
-  public String getDataDirectory() {
-    return dataDirectory;
-  }
-
-  public void setDataDirectory(String v) {
-    dataDirectory = v;
   }
 
   public String getRegistrarPassword() {
@@ -94,6 +95,14 @@ public class COSProperties {
 
   public void setAllowedOrigins(String v) {
     allowedOrigins = v;
+  }
+
+  public boolean isCookieSecure() {
+    return cookieSecure;
+  }
+
+  public void setCookieSecure(boolean v) {
+    cookieSecure = v;
   }
   // Deliberately no generated toString: this object contains secret values.
 }

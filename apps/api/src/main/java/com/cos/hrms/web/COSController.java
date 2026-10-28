@@ -23,7 +23,7 @@ public class COSController {
   private final COSProperties properties;
   private final COSMetadataService metadata;
   private final COSEmployeeService employees;
-  private final com.cos.hrms.onboarding.ConfigurationWorkflowService requests;
+  private final com.cos.hrms.employee.ConfigurationWorkflowService requests;
   private final COSImportService imports;
   private final COSFavoriteService favorites;
 
@@ -31,7 +31,7 @@ public class COSController {
       COSProperties properties,
       COSMetadataService metadata,
       COSEmployeeService employees,
-      com.cos.hrms.onboarding.ConfigurationWorkflowService requests,
+      com.cos.hrms.employee.ConfigurationWorkflowService requests,
       COSImportService imports,
       COSFavoriteService favorites) {
     this.properties = properties;

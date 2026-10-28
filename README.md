@@ -53,16 +53,30 @@ In a second terminal:
 npm run dev
 ```
 
-| Service                     | URL                                        |
+**Same Wi‑Fi / LAN (phones, other laptops):** use one command on the host PC instead of separate `api:dev` + `dev`:
+
+```powershell
+npm run dev:lan
+```
+
+That binds the web app to all interfaces (`0.0.0.0:3000`), starts the API for LAN proxying, adds a private-network firewall rule for port 3000 when permitted, and prints your Wi‑Fi URL (for example `http://192.168.0.243:3000/sign-in`). Other devices must use the **host PC’s IP**, not `127.0.0.1`. Run `npm run network:url` anytime to print the URL again. This is for local development only, not production exposure.
+
+| Service                     | URL (this PC only)                         |
 | --------------------------- | ------------------------------------------ |
-| Frontend and sign-in        | http://127.0.0.1:3000                      |
+| Frontend and sign-in        | http://127.0.0.1:3000/sign-in              |
 | Spring Boot health          | http://127.0.0.1:8080/api/v1/cos/health    |
 | HR workspace                | http://127.0.0.1:3000/people               |
 | Registration design preview | http://127.0.0.1:3000/registration-preview |
 
-Browser API calls use `/api/v1/cos` on the frontend origin. Next.js proxies them to `http://127.0.0.1:8080`; server-side `COS_API_ORIGIN` changes that destination. Routes identify screens, while backend authorization determines access.
+Browser API calls use `/api/v1/cos` on the frontend origin. Next.js proxies them to `http://127.0.0.1:8080`; server-side `COS_API_ORIGIN` changes that destination. Routes identify screens, while backend authorization determines access. The People portal uses a shared route map in `apps/web/lib/hrms/employee-management/people-routes.ts` for URL validation, navigation, and role checks; legacy `/dashboard` and `/employees` URLs redirect into `/people` in live mode without loading the demo workspace shell.
 
-The backend script downloads Maven 3.9.11 with SHA-512 verification into ignored `.tools/`. The local profile starts PostgreSQL on an available loopback port, applies migrations and preserves the database under `.local/postgres`. No separately installed PostgreSQL or Docker is required for this local setup. Stop the services with Ctrl+C and run the same commands to resume.
+The backend script downloads Maven 3.9.11 with SHA-512 verification into ignored `.tools/`. `npm run api:dev` uses the `local` profile and reads the connection from ignored `.local/database.env` (`COS_DATABASE_URL`, `COS_DATABASE_USER`, `COS_DATABASE_PASSWORD`). Application data is stored in PostgreSQL database `COS` on `127.0.0.1:5432`. The API does not start its own database. Flyway applies migrations, including leave policy and module metadata. Tests use a temporary database and do not connect to that server.
+
+HR registration assigns a **work email** on the configured company domain (`COS_MAIL_DOMAIN`, default `example.mhl.test` locally). The system generates `first.last@domain` and applies a deterministic suffix when that local part is already taken; HR can instead supply an existing mailbox on the same domain. Each assignment reserves the address in PostgreSQL and enqueues a `WORK_EMAIL_PROVISION` outbox event for future cPanel or mail-system integration (not delivered in local development).
+
+Sign-in uses one mechanism for the browser and for a deployed API process. `POST /api/v1/cos/login` checks the password with BCrypt and sets an HttpOnly, SameSite=Strict `COS_ACCESS` cookie for 30 minutes. The browser sends that cookie to the Next.js origin, and the `/api/v1/cos` rewrite forwards it to the API. The API validates the signature, issuer, expiry, company scope, and the account’s current status on every protected request. Cookie-authenticated changes also require the CSRF token from `GET /csrf`. `POST /auth/token` returns a bearer token for a non-browser client; that client sends `Authorization: Bearer` and does not use the CSRF cookie. The token is not stored in localStorage. Logout revokes the presented cookie or bearer on that API process, clears the cookie, and invalidates the server session. A copied token cannot be revoked on another API process. There is no password-recovery flow.
+
+Stop the services with Ctrl+C and run the same commands to resume. PostgreSQL must already be running and reachable through `.local/database.env`.
 
 ### Development accounts and stored data
 
@@ -79,7 +93,7 @@ New employee accounts use their chosen email/password after HR activation. Signu
 
 PostgreSQL stores profiles, drafts, account records, memberships, metadata, document content, reviews, history, audit and outbox records. Profile/draft payloads and document content are encrypted; account passwords are stored as hashes. Directory names/codes and operational metadata are not all encrypted. Document photos are stored in the database, not a public upload directory or cloud bucket.
 
-Keep `.local/postgres` and the encryption/fingerprint keys in `.local/backend-secrets.json` together for recovery. Do not delete or regenerate keys against an existing database. `.local/`, `.tools/`, dependencies, build output and test artifacts are ignored by Git. Use fictitious employee details and synthetic photos locally.
+Keep the encryption and fingerprint keys in `.local/backend-secrets.json` together with the PostgreSQL database for recovery. Do not delete or regenerate keys against an existing database. `.local/`, `.tools/`, dependencies, build output and test artifacts are ignored by Git. Use fictitious employee details and synthetic photos locally.
 
 ## Roles and business workflow
 
@@ -91,6 +105,8 @@ Keep `.local/postgres` and the encryption/fingerprint keys in `.local/backend-se
 | Request personal profile changes           | Reviews requests | Own profile only | No            |
 | Approve/reject employee changes            | Yes              | No               | No            |
 | Verify and activate employee access        | Yes              | No               | No            |
+| Record leave and approve leave requests    | Yes              | Requests own leave | No          |
+| Change leave policy metadata               | Yes              | No               | Yes           |
 | Propose additional-field configuration     | Yes              | No               | No            |
 | Approve/reject form configuration          | No               | No               | Yes           |
 
@@ -143,11 +159,13 @@ Registration, HR editing, profiles and lists share one workspace header/navigati
 | `/people/me`                                  | Linked employee's own profile                 |
 | `/people/change`                              | Own-profile update form                       |
 | `/people/requests`, `/people/requests/{uuid}` | Employee request status/details               |
+| `/people/leave`, `/people/leave/apply`        | Leave balances, requests, and recording       |
+| `/people/leave/policies`                      | HR or admin leave-policy metadata             |
 | `/people/configuration`                       | HR proposals or admin configuration approvals |
 
 Saved drafts and uploaded photos survive refresh. Changes made after the last save remain unsaved. Link navigation prompts before discarding unsaved form changes, and browser unload/refresh warns about them. Browser Back/Forward uses normal history; save first when leaving a form. Draft and employee versions guard against concurrent overwrites. Session loading uses a workspace loading state before protected data appears.
 
-`/registration-preview` is an isolated memory-only design preview. Explicit `NEXT_PUBLIC_COS_MODE=demo` retains the earlier prototype. Neither represents the connected workflow or persists a registered employee.
+`/registration-preview` is an isolated memory-only design preview. It does not represent the connected workflow or persist a registered employee.
 
 ## Document uploads and security
 
@@ -197,6 +215,7 @@ Identity/bank values must be JSON strings so leading zeros are preserved. Unknow
 
 ```powershell
 npm run api:test
+npm run lint
 npm run typecheck
 npm run build
 
@@ -216,7 +235,7 @@ npx playwright test --config playwright.onboarding.config.ts
 
 These are the last recorded implementation checks, not a claim that every future checkout or production environment has been verified. Connected tests create synthetic local records. Traces are disabled for that suite to avoid retaining credentials.
 
-`npm run test:connected` selects `tests/people-connected.spec.ts` and starts a frontend on port `3001`. Preview checks use port `3000`. Historical `tests/connected.spec.ts` describes the superseded admin-registration workflow and is excluded from the current connected configuration. `npm run test:e2e` runs the earlier demo suite on port `3002`; it does not validate current backend business rules.
+`npm run test:connected` selects `tests/people-connected.spec.ts` and starts a frontend on port `3001`. Preview checks use port `3000`. Historical `tests/connected.spec.ts` describes the superseded admin-registration workflow and is excluded from the current connected configuration. `npm run test:e2e` targets the historical demo suite on port `3002`; those checks are skipped because the demo workspace was removed. Use `npm run test:connected` for current UI coverage.
 
 Other commands:
 
@@ -232,7 +251,11 @@ The database uses additive Flyway migrations V1–V4. V4 introduces expanded `pe
 
 Historical employee records and requests remain in the legacy tables. They are not automatically migrated or ownership-linked. Legacy public employee request mutations return `410 LEGACY_WORKFLOW_RETIRED`; configuration requests remain active. The older CSV preview still exists, but expanded-profile bulk registration and legacy-record migration are pending. Live Google Sheets integration/synchronization is not implemented.
 
-Production authentication has a JWT resource-server configuration boundary, but browser OIDC, authoritative role/scope lookup and production employee provisioning/linking still need integration. Local bootstrap/signup authentication must not be used as production identity management. Production configuration execution defaults off.
+The `production` profile uses the same cookie sign-in as local development. It does not start an identity provider. Add the `oidc` profile only when an external authorization server issues the API tokens; that mode has no browser login in this application. Browser OIDC, notification/recovery, and a shared token-revocation store are not implemented. Production configuration execution defaults off.
+
+Deploy the site on one HTTPS origin. The browser talks to Next.js, and Next.js proxies `/api/v1/cos` to the API. The production profile sets `cos.cookie-secure=true`, so the access cookie is marked Secure even when the proxy calls the API over private HTTP. Do not publish the API port directly to the internet. Login and token requests are limited per API process and direct remote address; the API does not trust client-supplied forwarding headers for that limit. Run one API process, or pin a browser to one process, because the CSRF session and logout revocation are in that process.
+
+Production sign-in requires these environment variables, with no defaults and no values stored in the repository: `COS_DATABASE_URL`, `COS_DATABASE_USER`, `COS_DATABASE_PASSWORD`, `COS_ENCRYPTION_KEY`, `COS_FINGERPRINT_KEY`, `COS_JWT_SECRET` (base64, at least 32 bytes), `COS_SCOPE_ID`, `COS_ID_PREFIX`, `COS_MANUAL_ID_PATTERN`, `COS_REGISTRAR_PASSWORD`, `COS_ADMIN_PASSWORD`, `COS_REVIEWER_PASSWORD`, and `COS_VIEWER_PASSWORD`. Each bootstrap password must be at least 16 characters. `COS_ALLOWED_ORIGINS` lists the exact browser origins. `COS_BIND_ADDRESS` defaults to `127.0.0.1`. Optional OIDC mode also requires `COS_OIDC_ISSUER` and `--spring.profiles.active=production,oidc`.
 
 Before real employee data or deployment, complete:
 

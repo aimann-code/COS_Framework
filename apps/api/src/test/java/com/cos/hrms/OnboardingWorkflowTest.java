@@ -1,6 +1,6 @@
 package com.cos.hrms;
 
-import static com.cos.hrms.onboarding.OnboardingContracts.*;
+import static com.cos.hrms.employee.registration.OnboardingContracts.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -8,7 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.cos.hrms.account.*;
 import com.cos.hrms.metadata.*;
-import com.cos.hrms.onboarding.*;
+import com.cos.hrms.employee.ConfigurationWorkflowService;
+import com.cos.hrms.employee.documents.OnboardingDocumentService;
+import com.cos.hrms.employee.documents.OnboardingImagePolicy;
+import com.cos.hrms.employee.registration.OnboardingAccountService;
+import com.cos.hrms.employee.registration.OnboardingService;
 import com.cos.hrms.security.COSActor;
 import com.cos.hrms.shared.*;
 import com.cos.hrms.web.COSContracts;
@@ -39,7 +43,8 @@ import org.springframework.test.web.servlet.MockMvc;
       "cos.registrar-password=integration-test-password",
       "cos.admin-password=integration-test-password",
       "cos.reviewer-password=integration-test-password",
-      "cos.viewer-password=integration-test-password"
+      "cos.viewer-password=integration-test-password",
+      "cos.mail.domain=example.mhl.test"
     })
 @ActiveProfiles("test")
 @AutoConfigureMockMvc
@@ -243,6 +248,14 @@ class OnboardingWorkflowTest {
         .doesNotContain(p.values().get("name"), "000012345678");
     assertThat(
             jdbc.sql("SELECT count(*) FROM people.outbox WHERE employee_id=:id")
+                .param("id", UUID.fromString(employee.employee_id()))
+                .query(Long.class)
+                .single())
+        .isEqualTo(2);
+    assertThat(
+            jdbc.sql(
+                    "SELECT count(*) FROM people.outbox WHERE employee_id=:id AND"
+                        + " event_type='WORK_EMAIL_PROVISION'")
                 .param("id", UUID.fromString(employee.employee_id()))
                 .query(Long.class)
                 .single())
@@ -551,6 +564,43 @@ class OnboardingWorkflowTest {
         .andExpect(status().isForbidden());
     var wrong = with(sample(), "role", "ADMIN");
     assertThatThrownBy(() -> save(hr, wrong)).isInstanceOf(COSError.class);
+  }
+
+  @Test
+  void workEmailSuffixWhenSameDisplayName() {
+    String name = "Same Display";
+    var first = register(with(sample(), "name", name));
+    var second = register(with(sample(), "name", name));
+    assertThat(first.work_email()).endsWith("@example.mhl.test");
+    assertThat(second.work_email()).endsWith("@example.mhl.test");
+    assertThat(second.work_email()).isNotEqualTo(first.work_email());
+  }
+
+  @Test
+  void importedWorkEmailMustMatchCompanyDomain() {
+    var draft =
+        save(
+            hr,
+            with(
+                with(sample(), "work_email_mode", "existing"),
+                "work_email_existing",
+                "person@wrong.test"));
+    assertThatThrownBy(
+            () ->
+                service.register(
+                    hr,
+                    UUID.fromString(draft.draft_id()),
+                    service.getDraft(hr, UUID.fromString(draft.draft_id())).version()))
+        .isInstanceOf(COSError.class);
+  }
+
+  @Test
+  void workEmailPreviewUsesDraftOverrides() {
+    var draft = save(hr, with(sample(), "name", "Preview Person"));
+    var preview =
+        service.previewWorkEmail(
+            hr, UUID.fromString(draft.draft_id()), "Collision Name", "generate", null);
+    assertThat(preview.proposed_email()).isEqualTo("collision.name@example.mhl.test");
   }
 
   @Test
