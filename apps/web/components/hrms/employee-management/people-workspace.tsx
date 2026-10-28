@@ -8,6 +8,7 @@ import EmployeeOnboardingPreview from "./registration/employee-onboarding-previe
 import BulkRegistration from "./registration/bulk-registration";
 import LeaveDesk from "../leave-management/leave-desk";
 import PeopleShell from "./people-shell";
+import CompanyWorkspace from "../../shared/company-workspace";
 import PeopleScreenBody from "./people-screen-body";
 import type { ScreenData } from "./types";
 import { usePeopleScreenData } from "./use-people-screen-data";
@@ -34,6 +35,7 @@ export default function PeopleWorkspace() {
   const hr = !!session?.roles.includes("REGISTRAR");
   const admin = !!session?.roles.includes("ADMIN");
   const employee = !!session?.roles.includes("EMPLOYEE");
+  const companyManager = session?.home_workspace === "COMPANY";
 
   usePeopleScreenData(
     path,
@@ -163,12 +165,23 @@ export default function PeopleWorkspace() {
       workspaceLink={
         session?.platform_admin
           ? "/platform"
-          : session?.company_portal
+          : companyManager
             ? "/company"
             : undefined
       }
+      homeWorkspace={session?.home_workspace}
       roleLabel={
-        hr ? "HR" : admin ? "Company admin" : employee ? "Employee" : ""
+        session?.platform_admin
+          ? "COS admin"
+          : companyManager
+            ? "Company admin"
+            : hr
+              ? "HR"
+              : admin
+                ? "Company admin"
+                : employee
+                  ? "Employee"
+                  : ""
       }
       busy={busy}
       navContext={{
@@ -244,26 +257,39 @@ export default function PeopleWorkspace() {
           employee={employee}
         />
       )}
-      {data && !loading && !path.startsWith("/people/leave") && (
-        <PeopleScreenBody
-          path={path}
-          data={data}
-          setAppliedSearch={setAppliedSearch}
-          hr={hr}
-          admin={admin}
-          employee={employee}
-          busy={busy}
-          search={search}
-          setSearch={setSearch}
-          appliedSearch={appliedSearch}
-          note={note}
-          setNote={setNote}
-          action={action}
-          setData={setData}
-          setNotice={setNotice}
-          refresh={refresh}
-        />
-      )}
+      {data &&
+        !loading &&
+        path === "/people/configuration" &&
+        session?.company_portal && (
+          <CompanyWorkspace
+            view="configuration"
+            embedded
+            serviceCode="EMPLOYEE_MANAGEMENT"
+          />
+        )}
+      {data &&
+        !loading &&
+        !path.startsWith("/people/leave") &&
+        !(path === "/people/configuration" && session?.company_portal) && (
+          <PeopleScreenBody
+            path={path}
+            data={data}
+            setAppliedSearch={setAppliedSearch}
+            hr={hr && !companyManager}
+            admin={admin}
+            employee={employee}
+            busy={busy}
+            search={search}
+            setSearch={setSearch}
+            appliedSearch={appliedSearch}
+            note={note}
+            setNote={setNote}
+            action={action}
+            setData={setData}
+            setNotice={setNotice}
+            refresh={refresh}
+          />
+        )}
     </PeopleShell>
   );
 }

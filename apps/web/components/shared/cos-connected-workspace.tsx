@@ -48,7 +48,7 @@ export default function COSConnectedWorkspace({
             session.roles,
             session,
           )
-        : current_workspace_path(pathname, session.roles);
+        : current_workspace_path(pathname, session.roles, session);
       if (target !== pathname) router.replace(target);
       return;
     }
@@ -67,7 +67,7 @@ export default function COSConnectedWorkspace({
     session === undefined ||
     (session?.authenticated &&
       (authPath ||
-        current_workspace_path(pathname, session.roles) !== pathname));
+        current_workspace_path(pathname, session.roles, session) !== pathname));
 
   if (session === null && authPath) {
     return (

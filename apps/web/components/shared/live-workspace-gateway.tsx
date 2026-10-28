@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, type Session } from "../../lib/shared/cos-api";
-import { current_workspace_path, workspace_route } from "../../lib/shared/cos-routes";
+import {
+  current_workspace_path,
+  workspace_route,
+} from "../../lib/shared/cos-routes";
 
 /** Live product: legacy /dashboard and /employees URLs redirect into /people without loading the demo workspace. */
 export default function LiveWorkspaceGateway() {
@@ -26,7 +29,9 @@ export default function LiveWorkspaceGateway() {
           router.replace(`/sign-in?next=${encodeURIComponent(pathname)}`);
           return;
         }
-        router.replace(current_workspace_path(pathname, session.roles));
+        router.replace(
+          current_workspace_path(pathname, session.roles, session),
+        );
       } catch {
         if (!active) return;
         router.replace(`/sign-in?next=${encodeURIComponent(pathname)}`);

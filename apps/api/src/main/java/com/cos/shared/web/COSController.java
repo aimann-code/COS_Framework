@@ -66,6 +66,37 @@ public class COSController {
   public Map<String, Object> session(Authentication authentication) {
     if (authentication == null) return Map.of("authenticated", false);
     var a = actor(authentication);
+    boolean platformAdmin = a.admin() && a.scope().equals(properties.getScopeId());
+    boolean companyPortal =
+        (a.admin() || a.roles().contains("REGISTRAR"))
+            && jdbc.sql(
+                    "SELECT EXISTS(SELECT 1 FROM commerce.company WHERE scope_id=:scope AND"
+                        + " status='ACTIVE')")
+                .param("scope", a.scope())
+                .query(Boolean.class)
+                .single();
+    boolean companyManager =
+        companyPortal
+            && (a.admin()
+                || jdbc.sql(
+                        "SELECT EXISTS(SELECT 1 FROM commerce.company c JOIN auth.company_request r"
+                            + " ON r.request_id=c.company_id WHERE c.scope_id=:scope AND"
+                            + " c.status='ACTIVE' AND r.login_email=:email)")
+                    .param("scope", a.scope())
+                    .param("email", a.id())
+                    .query(Boolean.class)
+                    .single());
+    // Navigation describes the account's workspace; it grants no additional authority.
+    String homeWorkspace =
+        platformAdmin
+            ? "PLATFORM"
+            : a.roles().contains("EMPLOYEE")
+                ? "EMPLOYEE"
+                : companyManager
+                    ? "COMPANY"
+                    : a.roles().contains("REGISTRAR")
+                        ? "HR"
+                        : a.admin() ? "CONFIGURATION" : "DIRECTORY";
     return Map.of(
         "authenticated",
         true,
@@ -76,16 +107,11 @@ public class COSController {
         "scope_id",
         a.scope(),
         "platform_admin",
-        a.admin() && a.scope().equals(properties.getScopeId()),
+        platformAdmin,
         "company_portal",
-        (a.admin() || a.roles().contains("REGISTRAR"))
-            && jdbc.sql(
-                        "SELECT count(*) FROM commerce.company WHERE scope_id=:scope AND"
-                            + " status='ACTIVE'")
-                    .param("scope", a.scope())
-                    .query(Long.class)
-                    .single()
-                > 0,
+        companyPortal,
+        "home_workspace",
+        homeWorkspace,
         "scope_name",
         jdbc.sql("SELECT label FROM meta.scope WHERE scope_id=:scope")
             .param("scope", a.scope())

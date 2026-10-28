@@ -156,6 +156,7 @@ const adminSession: Session = {
   can_print: false,
   platform_admin: true,
   company_portal: false,
+  home_workspace: "PLATFORM",
 };
 const companySession: Session = {
   authenticated: true,
@@ -165,6 +166,7 @@ const companySession: Session = {
   can_print: false,
   platform_admin: false,
   company_portal: true,
+  home_workspace: "COMPANY",
 };
 const registration: CompanyRegistration = {
   company_id: acaciaId,
@@ -679,6 +681,35 @@ test("authenticated sign-in resumes the correct workspace and rejects external r
   let session = adminSession;
   const mock = await mockCommerce(page, {
     "GET /session": () => ({ body: session }),
+    "GET /onboarding/schema": () => ({
+      body: {
+        configuration_version: 1,
+        additional_fields: [],
+        scope_id: companySession.scope_id,
+        local_environment: true,
+      },
+    }),
+    "GET /onboarding/drafts": () => ({ body: [] }),
+    "GET /onboarding/employees": () => ({
+      body: { items: [], next_cursor: null },
+    }),
+    "GET /onboarding/me": () => ({
+      body: {
+        employee_id: brambleId,
+        employee_code: "SYNTHETIC-EMP-001",
+        display_name: "Synthetic employee",
+        version: 1,
+        work_email: null,
+        work_email_status: null,
+        profile: {
+          values: { name: "Synthetic employee" },
+          groups: {},
+          same_address: false,
+        },
+        documents: [],
+        created_at: timestamp,
+      },
+    }),
   });
   await page.goto("/sign-in?next=//example.invalid");
   await expect(page).toHaveURL(/\/platform$/);
@@ -698,6 +729,192 @@ test("authenticated sign-in resumes the correct workspace and rejects external r
   ).toBeVisible();
   await page.goto("/sign-up");
   await expect(page).toHaveURL(/\/company$/);
+  await page.goto("/dashboard");
+  await expect(page).toHaveURL(/\/company$/);
+  session = {
+    ...companySession,
+    username: "Synthetic HR",
+    home_workspace: "HR",
+  };
+  await page.goto("/sign-in");
+  await expect(page).toHaveURL(/\/people$/);
+  await expect(
+    page.getByRole("heading", { name: "HR workspace", exact: true }),
+  ).toBeVisible();
+  await page.goto("/dashboard");
+  await expect(page).toHaveURL(/\/people$/);
+  await page.goto("/sign-in?next=%2Fplatform%2Fpayments");
+  await expect(page).toHaveURL(/\/people$/);
+  await page.goto("/sign-in?next=%2Fpeople%2Fdirectory");
+  await expect(page).toHaveURL(/\/people\/directory$/);
+  session = {
+    ...companySession,
+    roles: ["EMPLOYEE"],
+    home_workspace: "EMPLOYEE",
+    company_portal: false,
+  };
+  await page.goto("/sign-in");
+  await expect(page).toHaveURL(/\/people\/me$/);
+  await expect(
+    page.getByRole("heading", { name: "My employee profile", exact: true }),
+  ).toBeVisible();
+  await page.goto("/sign-in?next=%2Fcompany");
+  await expect(page).toHaveURL(/\/people\/me$/);
+  await page.goto("/dashboard");
+  await expect(page).toHaveURL(/\/people\/me$/);
+  expect(mock.unexpected).toEqual([]);
+});
+
+test("company manager has company navigation and HR config stays inside the HR workspace", async ({
+  page,
+}, testInfo) => {
+  let session = companySession;
+  let unavailable = true;
+  let submitted: ConfigurationReview | null = null;
+  let releaseWorkspace: () => void = () => {};
+  const workspaceReady = new Promise<void>((resolve) => {
+    releaseWorkspace = resolve;
+  });
+  const mock = await mockCommerce(page, {
+    "GET /session": () => ({ body: session }),
+    "GET /onboarding/schema": () => ({
+      body: {
+        configuration_version: 1,
+        additional_fields: [],
+        scope_id: companySession.scope_id,
+        local_environment: true,
+      },
+    }),
+    "GET /onboarding/drafts": () => ({ body: [] }),
+    "GET /onboarding/employees": () => ({
+      body: { items: [], next_cursor: null },
+    }),
+    "GET /company/workspace": async () => {
+      await workspaceReady;
+      return unavailable
+        ? {
+            status: 503,
+            body: {
+              error_code: "WORKSPACE_UNAVAILABLE",
+              detail: "The company field schema is temporarily unavailable.",
+            },
+          }
+        : {
+            body: {
+              ...companyWorkspace,
+              configuration_requests: submitted
+                ? [...companyWorkspace.configuration_requests, submitted]
+                : companyWorkspace.configuration_requests,
+            },
+          };
+    },
+    "POST /company/configuration-requests": (request) => {
+      const input = request.postDataJSON();
+      submitted = {
+        ...configurations[1],
+        request_id: "30000000-0000-0000-0000-000000000099",
+        ...input,
+        status: "PENDING_REVIEW",
+      };
+      return { status: 202, body: submitted };
+    },
+  });
+  await page.goto("/people");
+  await expect(page).toHaveURL(/\/people\/directory$/);
+  await expect(page.getByRole("banner")).toContainText("Company admin");
+  const navigation = page.getByRole("navigation", {
+    name: "Employee Management",
+  });
+  await expect(
+    navigation.getByRole("link", { name: "Company overview", exact: true }),
+  ).toHaveAttribute("href", "/company");
+  await expect(
+    navigation.getByRole("link", { name: "HR overview", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    navigation.getByRole("link", { name: "Register employee", exact: true }),
+  ).toHaveCount(0);
+  await accessible(page);
+  await page.screenshot({
+    path: `tmp/company-manager-people-${testInfo.project.name}.png`,
+    fullPage: true,
+    scale: "css",
+  });
+  session = {
+    ...companySession,
+    username: "Synthetic company HR",
+    home_workspace: "HR",
+  };
+  await page.goto("/people");
+  await expect(page.getByRole("banner")).toContainText(" · HR");
+  const formLink = navigation.getByRole("link", {
+    name: "Form configuration",
+    exact: true,
+  });
+  await expect(formLink).toHaveAttribute("href", "/people/configuration");
+  await expect(
+    navigation.getByRole("link", { name: "Company workspace", exact: true }),
+  ).toHaveCount(0);
+  await formLink.click();
+  await expect(
+    page.getByRole("region", { name: "Loading workspace" }),
+  ).toHaveAttribute("aria-busy", "true");
+  releaseWorkspace();
+  await expect(page).toHaveURL(/\/people\/configuration$/);
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "The company field schema is temporarily unavailable.",
+  );
+  unavailable = false;
+  await page
+    .getByRole("button", { name: "Retry connection", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Approved service fields", exact: true }),
+  ).toBeVisible();
+  await expect(
+    navigation.getByRole("link", { name: "Form configuration", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await accessible(page);
+  await page.screenshot({
+    path: `tmp/hr-form-configuration-${testInfo.project.name}.png`,
+    fullPage: true,
+    scale: "css",
+  });
+  await page
+    .getByRole("button", { name: "Request a field", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Request a company field" });
+  await dialog
+    .getByLabel("Field label", { exact: true })
+    .fill("Badge allocation");
+  await dialog
+    .getByRole("textbox", { name: /^Technical field name/ })
+    .fill("badge_allocation");
+  await dialog
+    .getByLabel("Business reason", { exact: true })
+    .fill("Track synthetic employee badge allocation.");
+  await dialog
+    .getByRole("checkbox", { name: /I confirm this request/ })
+    .check();
+  await accessible(page);
+  await dialog
+    .getByRole("button", { name: "Submit field request", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page).toHaveURL(/\/people\/configuration$/);
+  await expect(page.getByRole("main")).toContainText("Badge allocation");
+  expect(
+    mock.calls.filter(
+      (call) =>
+        call.method === "POST" &&
+        call.path === "/company/configuration-requests",
+    ),
+  ).toHaveLength(1);
+  expect(
+    mock.calls.some(
+      (call) => call.path.startsWith("/platform/") || call.path === "/requests",
+    ),
+  ).toBe(false);
   expect(mock.unexpected).toEqual([]);
 });
 

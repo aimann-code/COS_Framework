@@ -14,6 +14,11 @@
 .surface * {
   box-sizing: border-box;
 }
+.embedded {
+  min-height: 0;
+  min-width: 0;
+  background: transparent;
+}
 .surface a:focus-visible,
 .surface button:focus-visible,
 .surface input:focus-visible,

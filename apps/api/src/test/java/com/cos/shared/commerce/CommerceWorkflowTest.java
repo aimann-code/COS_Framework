@@ -77,11 +77,43 @@ class CommerceWorkflowTest {
   @Autowired MockMvc mvc;
   @Autowired COSJson json;
   @Autowired com.cos.shared.account.COSAccountService accounts;
+  @Autowired com.cos.shared.account.COSAccountRepository accountRepository;
+  @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
   final COSActor operator = new COSActor("admin", "TEST", Set.of("ADMIN"));
 
   @BeforeAll
   void seed() {
     metadata.seedLocal("TEST");
+  }
+
+  @Test
+  void sessionSeparatesPlatformCompanyManagerHrAndEmployeeLandingWithoutChangingAuthority()
+      throws Exception {
+    var company = activate(List.of("EMPLOYEE_MANAGEMENT"));
+    mvc.perform(get("/api/v1/cos/session").cookie(login("admin")))
+        .andExpect(jsonPath("$.home_workspace").value("PLATFORM"));
+    mvc.perform(get("/api/v1/cos/session").cookie(login(company.email())))
+        .andExpect(jsonPath("$.home_workspace").value("COMPANY"))
+        .andExpect(jsonPath("$.company_portal").value(true));
+    for (String role : List.of("REGISTRAR", "EMPLOYEE")) {
+      String email = "navigation-" + UUID.randomUUID() + "@example.test";
+      accountRepository.createActive(
+          company.scope(),
+          "Synthetic " + role,
+          email,
+          passwords.encode("integration-test-password"),
+          role,
+          "admin");
+      Cookie cookie = login(email);
+      mvc.perform(get("/api/v1/cos/session").cookie(cookie))
+          .andExpect(
+              jsonPath("$.home_workspace").value(role.equals("REGISTRAR") ? "HR" : "EMPLOYEE"))
+          .andExpect(jsonPath("$.scope_id").value(company.scope()))
+          .andExpect(jsonPath("$.platform_admin").value(false))
+          .andExpect(jsonPath("$.company_portal").value(role.equals("REGISTRAR")));
+      mvc.perform(get("/api/v1/cos/platform/overview").cookie(cookie))
+          .andExpect(status().isForbidden());
+    }
   }
 
   @Test

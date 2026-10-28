@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { Session } from "../../../lib/shared/cos-api";
 import {
   people_nav,
   people_nav_current,
@@ -17,6 +18,7 @@ type PeopleShellProps = {
   busy: boolean;
   companyLabel?: string;
   workspaceLink?: string;
+  homeWorkspace?: Session["home_workspace"];
   navContext: PeopleNavContext;
   onSignOut: () => void;
   children: ReactNode;
@@ -30,6 +32,7 @@ export default function PeopleShell({
   busy,
   companyLabel = "Your organization",
   workspaceLink,
+  homeWorkspace,
   navContext,
   onSignOut,
   children,
@@ -40,7 +43,16 @@ export default function PeopleShell({
         Skip to workspace content
       </a>
       <header className={styles.portalHeader}>
-        <Link href="/people" className={styles.portalBrand}>
+        <Link
+          href={
+            homeWorkspace === "COMPANY"
+              ? "/company"
+              : homeWorkspace === "PLATFORM"
+                ? "/platform"
+                : "/people"
+          }
+          className={styles.portalBrand}
+        >
           COS <span>Employee Management</span>
         </Link>
         <div>
@@ -63,14 +75,16 @@ export default function PeopleShell({
               <small>Scoped People workspace</small>
             </div>
           </div>
-          {workspaceLink && (
-            <Link href={workspaceLink}>
-              {workspaceLink === "/platform"
-                ? "Platform administration"
-                : "Company workspace"}
-            </Link>
-          )}
-          {people_nav(roles)
+          {workspaceLink &&
+            homeWorkspace !== "COMPANY" &&
+            homeWorkspace !== "PLATFORM" && (
+              <Link href={workspaceLink}>
+                {workspaceLink === "/platform"
+                  ? "Platform administration"
+                  : "Company workspace"}
+              </Link>
+            )}
+          {people_nav(roles, homeWorkspace)
             .filter(
               (item) =>
                 item.url !== "/people/companies" ||
@@ -82,10 +96,7 @@ export default function PeopleShell({
                 item.url === "/people/companies" &&
                 workspaceLink === "/platform"
                   ? "/platform/companies"
-                  : item.url === "/people/configuration" &&
-                      workspaceLink === "/company"
-                    ? "/company/configuration"
-                    : item.url,
+                  : item.url,
             }))
             .map((item) => (
               <Link

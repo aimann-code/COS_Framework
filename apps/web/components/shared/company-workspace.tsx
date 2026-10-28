@@ -34,8 +34,18 @@ type ModuleEntry = {
   enabled: boolean;
   audience: string[];
 };
-export default function CompanyWorkspace({ view }: { view: string }) {
-  const path = "/company" + (view ? "/" + view : "");
+export default function CompanyWorkspace({
+  view,
+  embedded = false,
+  serviceCode,
+}: {
+  view: string;
+  embedded?: boolean;
+  serviceCode?: string;
+}) {
+  const path = embedded
+    ? "/people/configuration"
+    : "/company" + (view ? "/" + view : "");
   const { session, data, error, loading, reload } =
     useCommerceWorkspace<WorkspaceData>("company", path);
   const [modules, setModules] = useState<ModuleEntry[]>([]);
@@ -77,10 +87,18 @@ export default function CompanyWorkspace({ view }: { view: string }) {
       active = false;
     };
   }, [session?.authenticated, data?.company.company_id]);
-  const subscribed = (data?.services ?? []).filter((s) =>
-    data?.company.active_services.includes(s.service_code),
+  const subscribed = (data?.services ?? []).filter(
+    (s) =>
+      data?.company.active_services.includes(s.service_code) &&
+      (!serviceCode || s.service_code === serviceCode),
   );
-  const pending = (data?.configuration_requests ?? []).filter((r) =>
+  const configurationRequests = (data?.configuration_requests ?? []).filter(
+    (r) => !serviceCode || r.service_code === serviceCode,
+  );
+  const schemas = (data?.schemas ?? []).filter(
+    (schema) => !serviceCode || schema.service_code === serviceCode,
+  );
+  const pending = configurationRequests.filter((r) =>
     ["PENDING_REVIEW", "PENDING", "PENDING_APPROVAL"].includes(r.status),
   );
   const moduleCodes = new Set(subscribed.flatMap((s) => s.modules));
@@ -92,7 +110,7 @@ export default function CompanyWorkspace({ view }: { view: string }) {
   );
   const labelFor = (code: string) =>
     data?.services.find((s) => s.service_code === code)?.name ?? code;
-  const selectedSchema = data?.schemas.find(
+  const selectedSchema = schemas.find(
     (schema) => schema.service_code === service,
   );
   function resetField() {
@@ -157,38 +175,42 @@ export default function CompanyWorkspace({ view }: { view: string }) {
       setBusy(false);
     }
   }
-  return (
-    <CommerceShell
-      kind="company"
-      path={path}
-      session={session}
-      company={data?.company.company_name}
-    >
+  const content = (
+    <>
       <div className={styles.heading}>
         <div>
-          <span className={styles.kicker}>YOUR COMPANY WORKSPACE</span>
-          <h1>
-            {view === "configuration"
-              ? "Configuration requests"
-              : view === "services"
-                ? "Your subscribed services"
-                : (data?.company.company_name ?? "Company overview")}
-          </h1>
+          {embedded ? (
+            <h2 className={styles.sectionTitle}>Employee form requests</h2>
+          ) : (
+            <>
+              <span className={styles.kicker}>YOUR COMPANY WORKSPACE</span>
+              <h1>
+                {view === "configuration"
+                  ? "Configuration requests"
+                  : view === "services"
+                    ? "Your subscribed services"
+                    : (data?.company.company_name ?? "Company overview")}
+              </h1>
+            </>
+          )}
           <p>
-            Subscribed services, company-specific fields and clear approval
-            status.
+            {embedded
+              ? "Propose employee fields and follow their approval status within your HR workspace."
+              : "Subscribed services, company-specific fields and clear approval status."}
           </p>
         </div>
         <div className={styles.actions} style={{ marginTop: 0 }}>
-          <button
-            className={styles.secondary}
-            type="button"
-            disabled={loading || busy}
-            onClick={() => void reload()}
-          >
-            <RefreshCw size={14} />
-            Refresh
-          </button>
+          {!embedded && (
+            <button
+              className={styles.secondary}
+              type="button"
+              disabled={loading || busy}
+              onClick={() => void reload()}
+            >
+              <RefreshCw size={14} />
+              Refresh
+            </button>
+          )}
           {data && (
             <button
               className={styles.primary}
@@ -215,47 +237,49 @@ export default function CompanyWorkspace({ view }: { view: string }) {
       )}
       {data && (
         <>
-          <div className={styles.stats}>
-            <div className={styles.stat}>
-              <small>
-                Company status
-                <CheckCircle2 size={16} />
-              </small>
-              <strong style={{ fontSize: 23 }}>
-                {statusLabel(data.company.status)}
-              </strong>
-              <p>Payment verified before activation</p>
+          {!embedded && (
+            <div className={styles.stats}>
+              <div className={styles.stat}>
+                <small>
+                  Company status
+                  <CheckCircle2 size={16} />
+                </small>
+                <strong style={{ fontSize: 23 }}>
+                  {statusLabel(data.company.status)}
+                </strong>
+                <p>Payment verified before activation</p>
+              </div>
+              <div className={styles.stat}>
+                <small>
+                  Subscribed services
+                  <Package size={16} />
+                </small>
+                <strong>{data.company.active_services.length}</strong>
+                <p>Active in your company scope</p>
+              </div>
+              <div className={styles.stat}>
+                <small>
+                  Pending requests
+                  <FileCheck2 size={16} />
+                </small>
+                <strong>{pending.length}</strong>
+                <p>Loaded configuration requests</p>
+              </div>
+              <div className={styles.stat}>
+                <small>
+                  Approved fields
+                  <ShieldCheck size={16} />
+                </small>
+                <strong>
+                  {schemas.reduce(
+                    (sum, schema) => sum + schema.fields.length,
+                    0,
+                  )}
+                </strong>
+                <p>Shared service schemas</p>
+              </div>
             </div>
-            <div className={styles.stat}>
-              <small>
-                Subscribed services
-                <Package size={16} />
-              </small>
-              <strong>{data.company.active_services.length}</strong>
-              <p>Active in your company scope</p>
-            </div>
-            <div className={styles.stat}>
-              <small>
-                Pending requests
-                <FileCheck2 size={16} />
-              </small>
-              <strong>{pending.length}</strong>
-              <p>Loaded configuration requests</p>
-            </div>
-            <div className={styles.stat}>
-              <small>
-                Approved fields
-                <ShieldCheck size={16} />
-              </small>
-              <strong>
-                {data.schemas.reduce(
-                  (sum, schema) => sum + schema.fields.length,
-                  0,
-                )}
-              </strong>
-              <p>Shared service schemas</p>
-            </div>
-          </div>
+          )}
           {view !== "configuration" && (
             <section className={styles.panel}>
               <div className={styles.toolbar}>
@@ -328,7 +352,7 @@ export default function CompanyWorkspace({ view }: { view: string }) {
                   Each request stays attached to this company and its subscribed
                   service.
                 </p>
-                {!data.configuration_requests.length ? (
+                {!configurationRequests.length ? (
                   <div className={styles.empty}>
                     <FileCheck2 size={25} />
                     <h2>No configuration requests yet</h2>
@@ -347,7 +371,7 @@ export default function CompanyWorkspace({ view }: { view: string }) {
                   </div>
                 ) : (
                   <div className={styles.requestList}>
-                    {data.configuration_requests.map((request) => (
+                    {configurationRequests.map((request) => (
                       <article
                         className={styles.requestItem}
                         key={request.request_id}
@@ -383,16 +407,17 @@ export default function CompanyWorkspace({ view }: { view: string }) {
               <section className={styles.panel}>
                 <h2 className={styles.sectionTitle}>Approved service fields</h2>
                 <p>
-                  These field definitions come from the shared schema service.
-                  Changes do not require a new page for each company.
+                  {embedded
+                    ? "Approved fields are available in your company's employee form. Pending proposals remain in the request history."
+                    : "These field definitions come from the shared schema service. Changes do not require a new page for each company."}
                 </p>
-                {data.schemas.every((s) => !s.fields.length) ? (
+                {schemas.every((s) => !s.fields.length) ? (
                   <p className={styles.notice}>
                     No additional fields have been approved yet. Standard
                     service fields remain available in their module workspaces.
                   </p>
                 ) : (
-                  data.schemas.map((schema) =>
+                  schemas.map((schema) =>
                     schema.fields.length ? (
                       <div
                         className={styles.requestItem}
@@ -432,9 +457,9 @@ export default function CompanyWorkspace({ view }: { view: string }) {
                   )
                 )}
                 <div className={styles.notice}>
-                  Employee service fields feed the employee form. Other service
-                  fields are exposed through their shared schema; each installed
-                  component controls its own business behavior.
+                  {embedded
+                    ? "Requested changes appear on the employee form after administrator approval."
+                    : "Employee service fields feed the employee form. Other service fields are exposed through their shared schema; each installed component controls its own business behavior."}
                 </div>
               </section>
             </div>
@@ -628,6 +653,23 @@ export default function CompanyWorkspace({ view }: { view: string }) {
           </form>
         </CommerceDialog>
       )}
+    </>
+  );
+  return embedded ? (
+    <section
+      aria-label="Employee form configuration"
+      className={styles.surface + " " + styles.embedded}
+    >
+      {content}
+    </section>
+  ) : (
+    <CommerceShell
+      kind="company"
+      path={path}
+      session={session}
+      company={data?.company.company_name}
+    >
+      {content}
     </CommerceShell>
   );
 }

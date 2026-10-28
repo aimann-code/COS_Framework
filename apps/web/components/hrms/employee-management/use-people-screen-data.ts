@@ -64,8 +64,15 @@ export function usePeopleScreenData(
           setLoading(false);
           return;
         }
-        if (path === "/people/configuration" && s.company_portal) {
-          router.replace("/company/configuration");
+        if (
+          path === "/people/configuration" &&
+          (s.home_workspace === "COMPANY" || s.platform_admin)
+        ) {
+          router.replace(
+            s.platform_admin
+              ? "/platform/configuration"
+              : "/company/configuration",
+          );
           setLoading(false);
           return;
         }
@@ -75,7 +82,7 @@ export function usePeopleScreenData(
           );
         const denied = people_access_message(path, s.roles);
         if (denied) throw new Error(denied);
-        const redirect = people_auto_redirect(path, s.roles);
+        const redirect = people_auto_redirect(path, s.roles, s.home_workspace);
         if (redirect) {
           setLoading(false);
           router.replace(redirect);
@@ -119,12 +126,14 @@ export function usePeopleScreenData(
           next.companyCatalog = catalog;
           next.companyRequests = requests;
         } else if (path === "/people/configuration") {
-          const [configuration, requests] = await Promise.all([
-            api<Configuration>("/components/EMP_Reg/configuration"),
-            api<{ items: ConfigRequest[] }>("/requests?limit=100"),
-          ]);
-          next.config = configuration;
-          next.configs = requests.items;
+          if (!s.company_portal) {
+            const [configuration, requests] = await Promise.all([
+              api<Configuration>("/components/EMP_Reg/configuration"),
+              api<{ items: ConfigRequest[] }>("/requests?limit=100"),
+            ]);
+            next.config = configuration;
+            next.configs = requests.items;
+          }
         } else if (
           path === "/people/leave" ||
           path === "/people/leave/apply" ||

@@ -1,4 +1,5 @@
 import type { Page } from "./cos-domain";
+import type { Session } from "./cos-api";
 import { people_path_valid } from "../hrms/employee-management/people-routes";
 export const workspace_paths: Record<Page, string> = {
   dashboard: "/dashboard",
@@ -50,7 +51,21 @@ export function safe_return_path(path: string | null) {
     : "/";
 }
 
-export function landing_path(roles: string[]) {
+type WorkspaceContext = Pick<
+  Session,
+  "platform_admin" | "company_portal" | "home_workspace"
+>;
+
+export function landing_path(roles: string[], context?: WorkspaceContext) {
+  if (context?.platform_admin && roles.includes("ADMIN")) return "/platform";
+  if (context?.home_workspace === "HR" && roles.includes("REGISTRAR"))
+    return "/people";
+  if (
+    context?.company_portal &&
+    [undefined, "COMPANY"].includes(context.home_workspace) &&
+    roles.some((role) => role === "REGISTRAR" || role === "ADMIN")
+  )
+    return "/company";
   return roles.includes("ADMIN")
     ? "/people/configuration"
     : roles.includes("EMPLOYEE")
@@ -69,18 +84,25 @@ export function commerce_path_valid(path: string) {
 export function signed_in_path(
   path: string | null,
   roles: string[],
-  context?: { platform_admin?: boolean; company_portal?: boolean },
+  context?: WorkspaceContext,
 ) {
   const safe = safe_return_path(path);
-  if (safe === "/" && context?.platform_admin) return "/platform";
-  if (safe === "/" && context?.company_portal) return "/company";
-  return current_workspace_path(safe, roles);
+  if (safe.startsWith("/platform") && !context?.platform_admin)
+    return landing_path(roles, context);
+  if (safe.startsWith("/company") && !context?.company_portal)
+    return landing_path(roles, context);
+  return current_workspace_path(safe, roles, context);
 }
 
-export function current_workspace_path(path: string, roles: string[]) {
+export function current_workspace_path(
+  path: string,
+  roles: string[],
+  context?: WorkspaceContext,
+) {
   if (!roles.some((r) => ["REGISTRAR", "ADMIN", "EMPLOYEE"].includes(r)))
     return path;
-  if (["/", "/admin", "/dashboard"].includes(path)) return landing_path(roles);
+  if (["/", "/admin", "/dashboard"].includes(path))
+    return landing_path(roles, context);
   const routes: Record<string, string> = {
     "/employees": "/people/directory",
     "/employees/new": "/people/register",

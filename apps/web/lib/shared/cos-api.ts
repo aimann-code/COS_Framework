@@ -16,6 +16,8 @@ export type Session = {
   can_print: boolean;
   platform_admin?: boolean;
   company_portal?: boolean;
+  home_workspace?:
+    "PLATFORM" | "COMPANY" | "HR" | "EMPLOYEE" | "CONFIGURATION" | "DIRECTORY";
 };
 type Choice = { id: string; code: string; label: string; category: string };
 export type ConfigurationPlacement = {
